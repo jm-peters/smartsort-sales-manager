@@ -1,32 +1,24 @@
-# React + TypeScript + Vite
+# SmartSort Sales Manager
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+## Local setup
 
-Currently, two official plugins are available:
+1. Copy `.env.example` to `.env.local`.
+2. Set `VITE_SUPABASE_ANON_KEY` to the public anon key from Supabase Project Settings > API.
+3. Run `npm install` and `npm run dev`.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Supabase setup
 
-## React Compiler
+The Supabase project URL is configured through `VITE_SUPABASE_URL`. Apply the SQL migration in `supabase/migrations/202609190001_initial_schema.sql` from the Supabase SQL Editor or with the Supabase CLI.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+The migration creates the core shop, product, sales, sale item, and stock movement tables and enables row-level security. Policies and authenticated user mapping must be added before production data is exposed.
 
-## Expanding the Oxlint configuration
+## Deployment
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+GitHub can build and deploy the frontend, but a frontend deployment does not automatically run database migrations. Configure the hosting provider's `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` variables, and run Supabase migrations separately through the Supabase CLI or a protected CI job.
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+Useful checks:
+
+```bash
+npm run build
+npm run lint
 ```
-
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
