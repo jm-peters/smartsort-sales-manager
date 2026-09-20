@@ -4,6 +4,7 @@ import {
   ArrowUp,
   Bell,
   Box,
+  CalendarDays,
   CircleDollarSign,
   FileText,
   ShoppingCart,
@@ -32,6 +33,8 @@ function App() {
     activeTab,
     locale,
     session,
+    authError,
+    authBusy,
     syncStatus,
     lastSyncedAt,
     pendingSyncCount,
@@ -40,6 +43,7 @@ function App() {
     lowStockThreshold,
     isHydrated,
     reportSummary,
+    reportDate,
     quickSellProducts,
     cashSession,
     expectedCash,
@@ -63,8 +67,9 @@ function App() {
     resumeHeldCart,
     deleteHeldCart,
     setActiveTab,
+    setReportDate,
     setLocale,
-    loginDemo,
+    signIn,
     logout,
     completeOnboarding,
     updateShopProfile,
@@ -105,6 +110,9 @@ function App() {
   const [profileForm, setProfileForm] = useState<ShopProfile>({ shopName: '', ownerName: '', phone: '', pin: '' })
   const [lowStockThresholdForm, setLowStockThresholdForm] = useState('5')
   const [onboarding, setOnboarding] = useState<ShopProfile>({ shopName: '', ownerName: '', phone: '', pin: '' })
+  const [authMode, setAuthMode] = useState<'signup' | 'signin'>(shopProfile ? 'signin' : 'signup')
+  const [authEmail, setAuthEmail] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
   const cartTotal = cart.reduce((total, item) => total + item.unitPrice * item.qty, 0)
   const cartCount = cart.reduce((total, item) => total + item.qty, 0)
   const debtTotal = debts.reduce((total, debt) => total + Math.max(debt.amount - debt.paid, 0), 0)
@@ -189,13 +197,18 @@ function App() {
   }
 
   const handleOnboarding = () => {
-    if (!onboarding.shopName.trim() || !onboarding.ownerName.trim() || !onboarding.phone.trim() || onboarding.pin.length < 4) return
+    if (!onboarding.shopName.trim() || !onboarding.ownerName.trim() || !onboarding.phone.trim() || onboarding.pin.length < 4 || !authEmail.trim() || authPassword.length < 8) return
     void completeOnboarding({
       shopName: onboarding.shopName.trim(),
       ownerName: onboarding.ownerName.trim(),
       phone: onboarding.phone.trim(),
       pin: onboarding.pin,
-    })
+    }, authEmail.trim(), authPassword)
+  }
+
+  const handleSignIn = () => {
+    if (!authEmail.trim() || !authPassword) return
+    void signIn(authEmail.trim(), authPassword)
   }
 
   const openSettings = () => {
@@ -216,19 +229,27 @@ function App() {
 
   if (!isHydrated) return null
 
-  if (!shopProfile) {
+  if (!shopProfile || !session) {
     return (
       <div className="app-shell onboarding-shell">
         <main className="onboarding-card">
           <p className="eyebrow">SmartSort Sales Manager</p>
-          <h1>Set up your shop</h1>
-          <p className="onboarding-copy">Add your shop and owner details to start managing sales offline.</p>
+          <h1>{authMode === 'signup' && !shopProfile ? 'Set up your shop' : 'Welcome back'}</h1>
+          <p className="onboarding-copy">{authMode === 'signup' && !shopProfile ? 'Create your secure account and add your shop details to start managing sales.' : 'Sign in to continue managing your shop securely.'}</p>
           <div className="onboarding-form">
-            <input aria-label="Shop name" placeholder="Shop name" value={onboarding.shopName} onChange={(event) => setOnboarding({ ...onboarding, shopName: event.target.value })} />
-            <input aria-label="Owner name" placeholder="Owner name" value={onboarding.ownerName} onChange={(event) => setOnboarding({ ...onboarding, ownerName: event.target.value })} />
-            <input aria-label="Phone number" placeholder="Phone number" inputMode="tel" value={onboarding.phone} onChange={(event) => setOnboarding({ ...onboarding, phone: event.target.value })} />
-            <input aria-label="PIN" placeholder="4-digit PIN" inputMode="numeric" type="password" maxLength={6} value={onboarding.pin} onChange={(event) => setOnboarding({ ...onboarding, pin: event.target.value.replace(/\D/g, '') })} />
-            <button type="button" className="primary-action" onClick={handleOnboarding}>Start using SmartSort</button>
+            {authMode === 'signup' && !shopProfile && <>
+              <input aria-label="Shop name" placeholder="Shop name" value={onboarding.shopName} onChange={(event) => setOnboarding({ ...onboarding, shopName: event.target.value })} />
+              <input aria-label="Owner name" placeholder="Owner name" value={onboarding.ownerName} onChange={(event) => setOnboarding({ ...onboarding, ownerName: event.target.value })} />
+              <input aria-label="Phone number" placeholder="Phone number" inputMode="tel" value={onboarding.phone} onChange={(event) => setOnboarding({ ...onboarding, phone: event.target.value })} />
+              <input aria-label="PIN" placeholder="4-digit shop PIN" inputMode="numeric" type="password" maxLength={6} value={onboarding.pin} onChange={(event) => setOnboarding({ ...onboarding, pin: event.target.value.replace(/\D/g, '') })} />
+            </>}
+            <input aria-label="Email address" placeholder="Email address" type="email" autoComplete="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} />
+            <input aria-label="Password" placeholder="Password (8+ characters)" type="password" autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} />
+            {authError && <div className="auth-message" role="alert">{authError}</div>}
+            <button type="button" className="primary-action" disabled={authBusy} onClick={authMode === 'signup' && !shopProfile ? handleOnboarding : handleSignIn}>{authBusy ? 'Please wait…' : authMode === 'signup' && !shopProfile ? 'Create secure account' : 'Sign in'}</button>
+            <button type="button" className="auth-switch" onClick={() => setAuthMode(authMode === 'signup' ? 'signin' : 'signup')}>
+              {authMode === 'signup' ? 'Already have an account? Sign in' : 'Need an account? Create one'}
+            </button>
           </div>
         </main>
       </div>
@@ -277,7 +298,7 @@ function App() {
         {session ? (
           <button type="button" className="logout-button" onClick={logout}>Logout</button>
         ) : (
-          <button type="button" className="logout-button" onClick={loginDemo}>Login</button>
+          <button type="button" className="logout-button" onClick={() => { setAuthMode('signin'); void logout() }}>Sign out</button>
         )}
       </div>
 
@@ -391,7 +412,7 @@ function App() {
                     onClick={() => addToCart(product)}
                     aria-label={`Add ${product.name} to sale`}
                   >
-                    <div className="product-emoji">{product.image_emoji ?? '📦'}</div>
+                    <div className="product-mark"><Box size={19} strokeWidth={1.8} /></div>
                     <div className="product-info">
                       <strong>{product.name}</strong>
                       <span>{product.denomination && product.denomination !== 'unit' ? `${product.denomination} | ` : ''}KES {product.selling_price}</span>
@@ -593,11 +614,21 @@ function App() {
       {activeTab === 'reports' && (
         <main className="panel-card">
           <div className="panel-header">
-            <h2>{t.reports}</h2>
-            <button type="button" className="inline-button" onClick={() => setShowCloseDay(true)} disabled={cashSession?.status !== 'open'}>
-              <Check size={16} />
-              {cashSession?.status === 'open' ? t.closeDay : t.today}
-            </button>
+            <div>
+              <p className="eyebrow">{t.dashboard}</p>
+              <h2>{t.reports}</h2>
+            </div>
+            <div className="report-actions">
+              <label className="date-filter">
+                <CalendarDays size={15} />
+                <span className="sr-only">{t.reportDate}</span>
+                <input type="date" value={reportDate} onChange={(event) => void setReportDate(event.target.value)} />
+              </label>
+              <button type="button" className="inline-button" onClick={() => setShowCloseDay(true)} disabled={cashSession?.status !== 'open'}>
+                <Check size={16} />
+                {cashSession?.status === 'open' ? t.closeDay : t.today}
+              </button>
+            </div>
           </div>
 
           {showCloseDay && cashSession?.status === 'open' && (

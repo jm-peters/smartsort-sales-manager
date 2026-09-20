@@ -4,15 +4,38 @@ import { supabaseRemote } from '../lib/remote/supabase'
 import { buildReceiptText } from '../lib/receipt'
 import type { AppSyncStatus, CartItem, CashSession, DebtRecord, ExpenseCategory, HeldCart, ProductRecord, ReportSummary, ShopProfile, UserSession } from '../types/app'
 import { defaultLocale, type Locale } from '../lib/i18n'
+import type { User } from '@supabase/supabase-js'
 
 const initialProducts: ProductRecord[] = [
-  { id: 'p1', name: 'Sukari 1kg', buying_price: 130, selling_price: 170, low_limit: 5, unit: 'kg', image_emoji: '🍚', stock: 12, denomination: 'full', base_unit: 'kg' },
-  { id: 'p2', name: 'Chai', buying_price: 80, selling_price: 120, low_limit: 6, unit: 'pcs', image_emoji: '🫖', stock: 8, denomination: 'unit' },
-  { id: 'p3', name: 'Maziwa', buying_price: 95, selling_price: 140, low_limit: 4, unit: 'ltr', image_emoji: '🥛', stock: 3, denomination: 'unit' },
-  { id: 'p4', name: 'Pasta', buying_price: 60, selling_price: 80, low_limit: 5, unit: 'pcs', image_emoji: '🍝', stock: 0, denomination: 'unit' },
-  { id: 'p5', name: 'Mango', buying_price: 40, selling_price: 60, low_limit: 8, unit: 'pcs', image_emoji: '🥭', stock: 15, denomination: 'unit' },
-  { id: 'p6', name: 'Beans', buying_price: 110, selling_price: 150, low_limit: 7, unit: 'kg', image_emoji: '🫘', stock: 6, denomination: 'full', base_unit: 'kg' },
+  { id: 'p1', name: 'Sukari 1kg', buying_price: 130, selling_price: 170, low_limit: 5, unit: 'kg', stock: 12, denomination: 'full', base_unit: 'kg' },
+  { id: 'p2', name: 'Chai', buying_price: 80, selling_price: 120, low_limit: 6, unit: 'pcs', stock: 8, denomination: 'unit' },
+  { id: 'p3', name: 'Maziwa', buying_price: 95, selling_price: 140, low_limit: 4, unit: 'ltr', stock: 3, denomination: 'unit' },
+  { id: 'p4', name: 'Pasta', buying_price: 60, selling_price: 80, low_limit: 5, unit: 'pcs', stock: 0, denomination: 'unit' },
+  { id: 'p5', name: 'Mango', buying_price: 40, selling_price: 60, low_limit: 8, unit: 'pcs', stock: 15, denomination: 'unit' },
+  { id: 'p6', name: 'Beans', buying_price: 110, selling_price: 150, low_limit: 7, unit: 'kg', stock: 6, denomination: 'full', base_unit: 'kg' },
 ]
+
+const today = () => new Date().toISOString().slice(0, 10)
+
+async function reportForDate(date: string): Promise<ReportSummary> {
+  const start = new Date(`${date}T00:00:00`).toISOString()
+  const endDate = new Date(`${date}T00:00:00`)
+  endDate.setDate(endDate.getDate() + 1)
+  const end = endDate.toISOString()
+  const [sales, expenses] = await Promise.all([
+    localDb.sales.where('created_at').between(start, end, true, false).toArray(),
+    localDb.expenses.where('created_at').between(start, end, true, false).toArray(),
+  ])
+  const salesSummary = sales.reduce<ReportSummary>((summary, sale) => ({
+    sales: summary.sales + (sale.status === 'completed' ? sale.total : 0),
+    profit: summary.profit + (sale.status === 'completed' ? sale.total_profit : 0),
+    transactions: summary.transactions + (sale.status === 'completed' ? 1 : 0),
+    expenses: 0,
+    net: summary.net + (sale.status === 'completed' ? sale.total_profit : 0),
+  }), { sales: 0, profit: 0, transactions: 0, expenses: 0, net: 0 })
+  const expenseTotal = expenses.reduce((total, expense) => total + (expense.is_cash_drop ? 0 : expense.amount), 0)
+  return { ...salesSummary, expenses: expenseTotal, net: salesSummary.profit - expenseTotal }
+}
 
 const initialDebts: DebtRecord[] = [
   { id: 'd1', customer: 'Amina', phone: '+254712000001', amount: 850, paid: 200, items: [], dueDate: '2026-09-25', status: 'partial' },
@@ -21,6 +44,17 @@ const initialDebts: DebtRecord[] = [
 ]
 
 const deviceId = 'demo-device'
+
+function sessionFromUser(user: User): UserSession {
+  const metadata = user.user_metadata as Record<string, unknown>
+  return {
+    id: user.id,
+    name: typeof metadata.ownerName === 'string' ? metadata.ownerName : user.email ?? 'Owner',
+    phone: typeof metadata.phone === 'string' ? metadata.phone : '',
+    email: user.email,
+    role: 'owner',
+  }
+}
 
 async function expectedCashForSession(session: LocalCashSession): Promise<number> {
   const dayStart = session.opened_at.slice(0, 10)
@@ -53,11 +87,14 @@ interface AppState {
   syncStatus: AppSyncStatus
   lastSyncedAt: string | null
   pendingSyncCount: number
+  authError: string | null
+  authBusy: boolean
   lastSaleMessage: string | null
   shopProfile: ShopProfile | null
   lowStockThreshold: number
   isHydrated: boolean
   reportSummary: ReportSummary
+  reportDate: string
   quickSellProducts: ProductRecord[]
   cashSession: CashSession | null
   expectedCash: number
@@ -71,7 +108,7 @@ interface AppState {
   removeCartItem: (productId: string) => void
   clearCart: () => void
   completeSale: () => Promise<boolean>
-  addProduct: (product: Omit<ProductRecord, 'id' | 'image_emoji'> & { image_emoji?: string | null }) => void
+  addProduct: (product: Omit<ProductRecord, 'id'>) => void
   receiveStock: (productId: string, quantity: number) => Promise<void>
   addExpense: (title: string, amount: number, category: ExpenseCategory, paymentMethod: 'cash' | 'mpesa') => Promise<void>
   closeCashSession: (countedCash: number, note: string) => Promise<boolean>
@@ -81,10 +118,11 @@ interface AppState {
   addDebt: (customer: string, phone: string, items: DebtRecord['items'], creditLimit?: number | null) => Promise<boolean>
   payDebt: (debtId: string, amount: number, method: 'cash' | 'mpesa') => Promise<boolean>
   setActiveTab: (tab: AppState['activeTab']) => void
+  setReportDate: (date: string) => Promise<void>
   setLocale: (locale: Locale) => void
-  loginDemo: () => void
-  logout: () => void
-  completeOnboarding: (profile: ShopProfile) => Promise<void>
+  signIn: (email: string, password: string) => Promise<boolean>
+  logout: () => Promise<void>
+  completeOnboarding: (profile: ShopProfile, email: string, password: string) => Promise<boolean>
   updateShopProfile: (profile: ShopProfile) => Promise<void>
   setLowStockThreshold: (threshold: number) => Promise<void>
   syncNow: () => Promise<void>
@@ -97,15 +135,18 @@ export const useAppStore = create<AppState>((set) => ({
   debts: initialDebts,
   activeTab: 'sell',
   locale: defaultLocale,
-  session: { id: 'demo-user', name: 'Owner', phone: '+254700000000', role: 'owner' },
+  session: null,
   syncStatus: 'online',
   lastSyncedAt: null,
   pendingSyncCount: 0,
+  authError: null,
+  authBusy: false,
   lastSaleMessage: null,
   shopProfile: null,
   lowStockThreshold: 5,
   isHydrated: false,
   reportSummary: { sales: 0, profit: 0, transactions: 0, expenses: 0, net: 0 },
+  reportDate: today(),
   quickSellProducts: [],
   cashSession: null,
   expectedCash: 0,
@@ -282,7 +323,6 @@ export const useAppStore = create<AppState>((set) => ({
     const nextProduct = {
       id,
       ...product,
-      image_emoji: product.image_emoji ?? '📦',
       stock: product.stock ?? 0,
     }
     const localProduct = {
@@ -597,19 +637,39 @@ export const useAppStore = create<AppState>((set) => ({
     return true
   },
   setActiveTab: (tab) => set({ activeTab: tab }),
+  setReportDate: async (date) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return
+    set({ reportDate: date, reportSummary: await reportForDate(date) })
+  },
   setLocale: (locale) => set({ locale }),
-  loginDemo: () =>
-    set({
-      session: { id: 'demo-user', name: 'Owner', phone: '+254700000000', role: 'owner' },
-    }),
-  logout: () => set({ session: null }),
-  completeOnboarding: async (profile) => {
+  signIn: async (email, password) => {
+    set({ authBusy: true, authError: null })
+    const result = await supabaseRemote.login(email, password)
+    if (result.error || !result.user) {
+      set({ authBusy: false, authError: result.error ?? 'Unable to sign in.' })
+      return false
+    }
+    set({ authBusy: false, authError: null, session: sessionFromUser(result.user) })
+    return true
+  },
+  logout: async () => {
+    const result = await supabaseRemote.logout()
+    set({ session: null, authError: result.error })
+  },
+  completeOnboarding: async (profile, email, password) => {
+    set({ authBusy: true, authError: null })
+    const result = await supabaseRemote.register({ ...profile, email, password })
+    if (result.error) {
+      set({ authBusy: false, authError: result.error })
+      return false
+    }
     await localDb.meta.put({ key: 'shop_profile', value: profile })
-    await supabaseRemote.register(profile)
-    set({
-      shopProfile: profile,
-      session: { id: 'demo-user', name: profile.ownerName, phone: profile.phone, role: 'owner' },
-    })
+    if (result.user) {
+      set({ authBusy: false, authError: null, shopProfile: profile, session: sessionFromUser(result.user) })
+      return true
+    }
+    set({ authBusy: false, authError: 'Account created. Check your email to confirm your account, then sign in.' })
+    return false
   },
   updateShopProfile: async (profile) => {
     await localDb.meta.put({ key: 'shop_profile', value: profile })
@@ -694,7 +754,10 @@ export const useAppStore = create<AppState>((set) => ({
       }
       const expectedCash = await expectedCashForSession(localSession)
 
+      const auth = await supabaseRemote.refresh()
       set({
+        session: auth.user ? sessionFromUser(auth.user) : null,
+        authError: auth.error,
         syncStatus: await supabaseRemote.syncStatus(),
         pendingSyncCount: queuedRows,
         lastSyncedAt: metaSyncState?.last_pull_at ?? null,
@@ -706,6 +769,7 @@ export const useAppStore = create<AppState>((set) => ({
           : 5,
         isHydrated: true,
         reportSummary,
+        reportDate: today(),
         quickSellProducts,
         cashSession: {
           id: localSession.id,

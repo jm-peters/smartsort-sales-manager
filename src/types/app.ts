@@ -7,7 +7,6 @@ export type ProductRecord = {
   selling_price: number
   low_limit: number
   unit: string
-  image_emoji?: string | null
   stock: number
   denomination?: ProductDenomination
   base_unit?: string
@@ -44,6 +43,7 @@ export type UserSession = {
   id: string
   name: string
   phone: string
+  email?: string
   role: 'owner' | 'cashier'
 }
 

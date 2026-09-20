@@ -10,7 +10,6 @@ export type Product = {
   low_limit: number
   unit: string
   barcode?: string | null
-  image_emoji?: string | null
   is_active: boolean
   created_at: string
   updated_at: string
@@ -306,7 +305,6 @@ export async function seedDemoData(): Promise<void> {
       selling_price: 170,
       low_limit: 5,
       unit: 'kg',
-      image_emoji: '🍚',
       is_active: true,
       created_at: now,
       updated_at: now,
@@ -321,7 +319,6 @@ export async function seedDemoData(): Promise<void> {
       selling_price: 120,
       low_limit: 6,
       unit: 'pcs',
-      image_emoji: '🫖',
       is_active: true,
       created_at: now,
       updated_at: now,
@@ -336,7 +333,6 @@ export async function seedDemoData(): Promise<void> {
       selling_price: 140,
       low_limit: 4,
       unit: 'ltr',
-      image_emoji: '🥛',
       is_active: true,
       created_at: now,
       updated_at: now,
