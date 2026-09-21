@@ -8,8 +8,16 @@ export type AuthResult = {
 }
 
 export type RemoteAdapter = {
-  login: (email: string, password: string) => Promise<AuthResult>
-  register: (input: { email: string; password: string; shopName: string; ownerName: string; phone: string }) => Promise<AuthResult>
+  login: (identifier: string, password: string) => Promise<AuthResult>
+  checkUsernameAvailable: (username: string) => Promise<{ available: boolean; error: string | null }>
+  register: (input: { email: string; password: string; username: string; shopName: string; ownerName: string; phone?: string }) => Promise<AuthResult>
+  registerCashier: (email: string, password: string) => Promise<AuthResult>
+  resendConfirmation: (email: string) => Promise<{ error: string | null }>
+  requestPasswordReset: (email: string) => Promise<{ error: string | null }>
+  updatePassword: (password: string) => Promise<{ error: string | null }>
+  claimCashierInvitation: () => Promise<{ error: string | null }>
+  getShopContext: () => Promise<{ shopId: string; shopName: string; ownerName: string; phone: string; role: 'owner' | 'cashier'; username?: string; email?: string; onboardingStep?: string } | null>
+  inviteCashier: (email: string) => Promise<{ error: string | null }>
   refresh: () => Promise<AuthResult>
   logout: () => Promise<{ error: string | null }>
   pushBatch: (rows: Array<{ table: string; op: 'upsert' | 'delete'; payload: unknown }>) => Promise<void>

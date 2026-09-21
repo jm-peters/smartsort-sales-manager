@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { localDb, type CashSession as LocalCashSession } from '../lib/db/local'
 import { supabaseRemote } from '../lib/remote/supabase'
 import { buildReceiptText } from '../lib/receipt'
-import type { AppSyncStatus, CartItem, CashSession, DebtRecord, ExpenseCategory, HeldCart, ProductRecord, ReportSummary, ShopProfile, UserSession } from '../types/app'
+import type { AppSyncStatus, CartItem, CashSession, DebtRecord, ExpenseCategory, HeldCart, ProductRecord, ReportSummary, ShopProfile, SignupInput, UserSession } from '../types/app'
 import { defaultLocale, type Locale } from '../lib/i18n'
 import type { User } from '@supabase/supabase-js'
 
@@ -44,15 +44,30 @@ const initialDebts: DebtRecord[] = [
 ]
 
 const deviceId = 'demo-device'
+const credentialError = 'Jina la mtumiaji/barua pepe au password si sahihi'
 
-function sessionFromUser(user: User): UserSession {
+async function derivePinHash(pin: string, salt: Uint8Array): Promise<string> {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits'])
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: salt as unknown as BufferSource, iterations: 600_000, hash: 'SHA-256' }, key, 256)
+  return Array.from(new Uint8Array(bits), (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  return btoa(String.fromCharCode(...bytes))
+}
+
+function base64ToBytes(value: string): Uint8Array {
+  return Uint8Array.from(atob(value), (character) => character.charCodeAt(0))
+}
+
+function sessionFromUser(user: User, role: UserSession['role'] = 'owner'): UserSession {
   const metadata = user.user_metadata as Record<string, unknown>
   return {
     id: user.id,
     name: typeof metadata.ownerName === 'string' ? metadata.ownerName : user.email ?? 'Owner',
     phone: typeof metadata.phone === 'string' ? metadata.phone : '',
     email: user.email,
-    role: 'owner',
+    role,
   }
 }
 
@@ -89,6 +104,8 @@ interface AppState {
   pendingSyncCount: number
   authError: string | null
   authBusy: boolean
+  localUnlockRequired: boolean
+  devicePinConfigured: boolean
   lastSaleMessage: string | null
   shopProfile: ShopProfile | null
   lowStockThreshold: number
@@ -120,9 +137,16 @@ interface AppState {
   setActiveTab: (tab: AppState['activeTab']) => void
   setReportDate: (date: string) => Promise<void>
   setLocale: (locale: Locale) => void
-  signIn: (email: string, password: string) => Promise<boolean>
+  signIn: (identifier: string, password: string) => Promise<boolean>
+  registerCashier: (email: string, password: string) => Promise<boolean>
+  resendConfirmation: (email: string) => Promise<boolean>
+  requestPasswordReset: (email: string) => Promise<boolean>
+  updatePassword: (password: string) => Promise<boolean>
+  inviteCashier: (email: string) => Promise<boolean>
   logout: () => Promise<void>
-  completeOnboarding: (profile: ShopProfile, email: string, password: string) => Promise<boolean>
+  completeOnboarding: (input: SignupInput) => Promise<boolean>
+  setDevicePin: (pin: string) => Promise<boolean>
+  unlockWithPin: (pin: string) => Promise<boolean>
   updateShopProfile: (profile: ShopProfile) => Promise<void>
   setLowStockThreshold: (threshold: number) => Promise<void>
   syncNow: () => Promise<void>
@@ -141,6 +165,8 @@ export const useAppStore = create<AppState>((set) => ({
   pendingSyncCount: 0,
   authError: null,
   authBusy: false,
+  localUnlockRequired: false,
+  devicePinConfigured: false,
   lastSaleMessage: null,
   shopProfile: null,
   lowStockThreshold: 5,
@@ -642,34 +668,160 @@ export const useAppStore = create<AppState>((set) => ({
     set({ reportDate: date, reportSummary: await reportForDate(date) })
   },
   setLocale: (locale) => set({ locale }),
-  signIn: async (email, password) => {
-    set({ authBusy: true, authError: null })
-    const result = await supabaseRemote.login(email, password)
-    if (result.error || !result.user) {
-      set({ authBusy: false, authError: result.error ?? 'Unable to sign in.' })
+  signIn: async (identifier, password) => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      set({ authError: 'Unahitaji intaneti kwa mara ya kwanza kwenye simu hii.' })
       return false
     }
-    set({ authBusy: false, authError: null, session: sessionFromUser(result.user) })
+    set({ authBusy: true, authError: null })
+    const result = await supabaseRemote.login(identifier, password)
+    if (result.error || !result.user) {
+      set({ authBusy: false, authError: result.error ?? credentialError })
+      return false
+    }
+    const claim = await supabaseRemote.claimCashierInvitation()
+    if (claim.error) {
+      set({ authBusy: false, authError: claim.error, session: null })
+      return false
+    }
+    const context = await supabaseRemote.getShopContext()
+    if (!context) {
+      set({ authBusy: false, authError: 'Your account is not linked to a shop yet.', session: null })
+      return false
+    }
+    const profile = { shopName: context.shopName, ownerName: context.ownerName, phone: context.phone, pin: '' }
+    await localDb.meta.put({ key: 'shop_profile', value: profile })
+    const session = sessionFromUser(result.user, context.role)
+    await localDb.meta.put({ key: 'local_session', value: session })
+    set({ authBusy: false, authError: null, session, shopProfile: profile, localUnlockRequired: false })
     return true
+  },
+  registerCashier: async (email, password) => {
+    set({ authBusy: true, authError: null })
+    const result = await supabaseRemote.registerCashier(email, password)
+    if (result.error) {
+      set({ authBusy: false, authError: result.error })
+      return false
+    }
+    if (!result.user || !result.session) {
+      set({ authBusy: false, authError: 'Account created. Check your email to confirm your account, then sign in.' })
+      return false
+    }
+    const claim = await supabaseRemote.claimCashierInvitation()
+    const context = await supabaseRemote.getShopContext()
+    if (claim.error || !context) {
+      await supabaseRemote.logout()
+      set({ authBusy: false, authError: claim.error ?? 'No active cashier invitation was found.' })
+      return false
+    }
+    const profile = { shopName: context.shopName, ownerName: context.ownerName, phone: context.phone, pin: '' }
+    await localDb.meta.put({ key: 'shop_profile', value: profile })
+    set({ authBusy: false, authError: null, session: sessionFromUser(result.user, 'cashier'), shopProfile: profile })
+    return true
+  },
+  resendConfirmation: async (email) => {
+    set({ authBusy: true, authError: null })
+    const result = await supabaseRemote.resendConfirmation(email)
+    set({ authBusy: false, authError: result.error ?? 'Confirmation email sent.' })
+    return !result.error
+  },
+  requestPasswordReset: async (email) => {
+    set({ authBusy: true, authError: null })
+    const result = await supabaseRemote.requestPasswordReset(email)
+    set({ authBusy: false, authError: result.error ?? 'Password reset email sent.' })
+    return !result.error
+  },
+  updatePassword: async (password) => {
+    if (password.length < 8) {
+      set({ authError: 'Password lazima iwe na angalau herufi 8.' })
+      return false
+    }
+    set({ authBusy: true, authError: null })
+    const result = await supabaseRemote.updatePassword(password)
+    set({ authBusy: false, authError: result.error ?? null })
+    return !result.error
+  },
+  inviteCashier: async (email) => {
+    set({ authBusy: true, authError: null })
+    const result = await supabaseRemote.inviteCashier(email)
+    set({ authBusy: false, authError: result.error })
+    return !result.error
   },
   logout: async () => {
     const result = await supabaseRemote.logout()
     set({ session: null, authError: result.error })
   },
-  completeOnboarding: async (profile, email, password) => {
+  completeOnboarding: async (input) => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      set({ authError: 'Signup inahitaji intaneti.' })
+      return false
+    }
+    const username = input.username.trim().toLowerCase()
+    if (!/^[a-z0-9_.]{3,20}$/.test(username)) {
+      set({ authError: 'Username lazima iwe na herufi 3-20: a-z, 0-9, _ au .' })
+      return false
+    }
+    if (input.password.length < 8) {
+      set({ authError: 'Password lazima iwe na angalau herufi 8.' })
+      return false
+    }
     set({ authBusy: true, authError: null })
-    const result = await supabaseRemote.register({ ...profile, email, password })
+    const availability = await supabaseRemote.checkUsernameAvailable(username)
+    if (availability.error || !availability.available) {
+      set({ authBusy: false, authError: 'Username hiyo tayari inatumika.' })
+      return false
+    }
+    const result = await supabaseRemote.register({ ...input, username, ownerName: input.ownerName.trim(), shopName: input.shopName.trim() })
     if (result.error) {
       set({ authBusy: false, authError: result.error })
       return false
     }
+    const profile = { shopName: input.shopName.trim(), ownerName: input.ownerName.trim(), phone: '', pin: '' }
     await localDb.meta.put({ key: 'shop_profile', value: profile })
     if (result.user) {
-      set({ authBusy: false, authError: null, shopProfile: profile, session: sessionFromUser(result.user) })
+      const context = await supabaseRemote.getShopContext()
+      if (!context) {
+        set({ authBusy: false, authError: 'Account created, but the shop could not be provisioned.' })
+        return false
+      }
+      const session = sessionFromUser(result.user, context.role)
+      await localDb.meta.put({ key: 'local_session', value: session })
+      set({ authBusy: false, authError: null, shopProfile: profile, session, localUnlockRequired: false })
       return true
     }
     set({ authBusy: false, authError: 'Account created. Check your email to confirm your account, then sign in.' })
     return false
+  },
+  setDevicePin: async (pin) => {
+    if (!/^\d{4,6}$/.test(pin)) return false
+    const salt = crypto.getRandomValues(new Uint8Array(16))
+    const hash = await derivePinHash(pin, salt)
+    await localDb.meta.put({ key: 'device_pin', value: { salt: bytesToBase64(salt), hash, failures: 0 } })
+    set({ devicePinConfigured: true, localUnlockRequired: false })
+    return true
+  },
+  unlockWithPin: async (pin) => {
+    const stored = await localDb.meta.get('device_pin')
+    const cached = await localDb.meta.get('local_session')
+    if (!stored || !cached || typeof stored.value !== 'object' || typeof cached.value !== 'object') return false
+    const pinRecord = stored.value as { salt?: string; hash?: string; failures?: number }
+    if (!pinRecord.salt || !pinRecord.hash) return false
+    const hash = await derivePinHash(pin, base64ToBytes(pinRecord.salt))
+    if (hash !== pinRecord.hash) {
+      const failures = (pinRecord.failures ?? 0) + 1
+      if (failures >= 10) {
+        await localDb.meta.delete('device_pin')
+        await localDb.meta.delete('local_session')
+        set({ devicePinConfigured: false, localUnlockRequired: false, session: null, shopProfile: null, authError: 'PIN imejaribiwa mara nyingi. Ingia tena kwa email na password.' })
+      } else {
+        await localDb.meta.put({ key: 'device_pin', value: { ...pinRecord, failures } })
+        set({ authError: `PIN si sahihi. Jaribio ${failures}/10.` })
+      }
+      return false
+    }
+    await localDb.meta.put({ key: 'device_pin', value: { ...pinRecord, failures: 0 } })
+    set({ session: cached.value as UserSession, localUnlockRequired: false, authError: null })
+    return true
   },
   updateShopProfile: async (profile) => {
     await localDb.meta.put({ key: 'shop_profile', value: profile })
@@ -754,15 +906,46 @@ export const useAppStore = create<AppState>((set) => ({
       }
       const expectedCash = await expectedCashForSession(localSession)
 
+      const localPin = await localDb.meta.get('device_pin')
+      const cachedSession = await localDb.meta.get('local_session')
+      const cachedProfile = await localDb.meta.get('shop_profile')
+      const hasLocalSession = Boolean(localPin && cachedSession && typeof cachedSession.value === 'object')
+      if (typeof navigator !== 'undefined' && !navigator.onLine && hasLocalSession) {
+        set({
+          session: null,
+          localUnlockRequired: true,
+          devicePinConfigured: true,
+          authError: null,
+          syncStatus: 'offline',
+          pendingSyncCount: queuedRows,
+          lastSyncedAt: metaSyncState?.last_pull_at ?? null,
+          shopProfile: cachedProfile?.value && typeof cachedProfile.value === 'object' ? cachedProfile.value as ShopProfile : null,
+          lowStockThreshold: typeof lowStockThresholdMeta?.value === 'number' && Number.isInteger(lowStockThresholdMeta.value) && lowStockThresholdMeta.value >= 0 ? lowStockThresholdMeta.value : 5,
+          isHydrated: true,
+          reportSummary,
+          reportDate: today(),
+          quickSellProducts,
+          cashSession: { id: localSession.id, label: localSession.label, openedAt: localSession.opened_at, openingFloat: localSession.opening_float, expectedCash, status: localSession.status },
+          expectedCash,
+          creditLimits: creditLimitsMeta?.value && typeof creditLimitsMeta.value === 'object' ? creditLimitsMeta.value as Record<string, number | null> : {},
+          heldCarts: localHeldCarts.map((heldCart) => ({ id: heldCart.id, label: heldCart.label, items: heldCart.items as CartItem[], total: heldCart.total, createdAt: heldCart.created_at })),
+        })
+        return
+      }
+
       const auth = await supabaseRemote.refresh()
+      const context = auth.user ? await supabaseRemote.getShopContext() : null
       set({
-        session: auth.user ? sessionFromUser(auth.user) : null,
-        authError: auth.error,
+        session: auth.user && context ? sessionFromUser(auth.user, context.role) : null,
+        devicePinConfigured: Boolean(localPin),
+        authError: auth.error ?? (auth.user && !context ? 'Your account is not linked to a shop yet.' : null),
         syncStatus: await supabaseRemote.syncStatus(),
         pendingSyncCount: queuedRows,
         lastSyncedAt: metaSyncState?.last_pull_at ?? null,
-        shopProfile: profileMeta?.value && typeof profileMeta.value === 'object' && 'shopName' in profileMeta.value
-          ? profileMeta.value as ShopProfile
+        shopProfile: context
+          ? { shopName: context.shopName, ownerName: context.ownerName, phone: context.phone, pin: '' }
+          : profileMeta?.value && typeof profileMeta.value === 'object' && 'shopName' in profileMeta.value
+            ? profileMeta.value as ShopProfile
           : null,
         lowStockThreshold: typeof lowStockThresholdMeta?.value === 'number' && Number.isInteger(lowStockThresholdMeta.value) && lowStockThresholdMeta.value >= 0
           ? lowStockThresholdMeta.value

@@ -54,6 +54,14 @@ export type ShopProfile = {
   pin: string
 }
 
+export type SignupInput = {
+  ownerName: string
+  shopName: string
+  username: string
+  email: string
+  password: string
+}
+
 export type AppSyncStatus = 'online' | 'offline' | 'syncing' | 'error'
 
 export type ReportSummary = {

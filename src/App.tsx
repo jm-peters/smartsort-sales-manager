@@ -35,6 +35,8 @@ function App() {
     session,
     authError,
     authBusy,
+    localUnlockRequired,
+    devicePinConfigured,
     syncStatus,
     lastSyncedAt,
     pendingSyncCount,
@@ -70,8 +72,15 @@ function App() {
     setReportDate,
     setLocale,
     signIn,
+    registerCashier,
+    resendConfirmation,
+    requestPasswordReset,
+    updatePassword,
+    inviteCashier,
     logout,
     completeOnboarding,
+    setDevicePin,
+    unlockWithPin,
     updateShopProfile,
     setLowStockThreshold,
     syncNow,
@@ -81,6 +90,10 @@ function App() {
   useEffect(() => {
     void hydrateLocalState()
   }, [hydrateLocalState])
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('reset') === '1') setAuthMode('reset')
+  }, [])
 
   const t = strings[locale]
   const [searchTerm, setSearchTerm] = useState('')
@@ -108,11 +121,17 @@ function App() {
   const [receiptMessage, setReceiptMessage] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [profileForm, setProfileForm] = useState<ShopProfile>({ shopName: '', ownerName: '', phone: '', pin: '' })
+  const [cashierEmail, setCashierEmail] = useState('')
+  const [inviteMessage, setInviteMessage] = useState('')
   const [lowStockThresholdForm, setLowStockThresholdForm] = useState('5')
   const [onboarding, setOnboarding] = useState<ShopProfile>({ shopName: '', ownerName: '', phone: '', pin: '' })
-  const [authMode, setAuthMode] = useState<'signup' | 'signin'>(shopProfile ? 'signin' : 'signup')
+  const [authMode, setAuthMode] = useState<'signup' | 'signin' | 'cashier-signup' | 'reset'>('signup')
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
+  const [authConfirmPassword, setAuthConfirmPassword] = useState('')
+  const [authUsername, setAuthUsername] = useState('')
+  const [devicePin, setDevicePinValue] = useState('')
+  const [showSetDevicePin, setShowSetDevicePin] = useState(false)
   const cartTotal = cart.reduce((total, item) => total + item.unitPrice * item.qty, 0)
   const cartCount = cart.reduce((total, item) => total + item.qty, 0)
   const debtTotal = debts.reduce((total, debt) => total + Math.max(debt.amount - debt.paid, 0), 0)
@@ -197,18 +216,69 @@ function App() {
   }
 
   const handleOnboarding = () => {
-    if (!onboarding.shopName.trim() || !onboarding.ownerName.trim() || !onboarding.phone.trim() || onboarding.pin.length < 4 || !authEmail.trim() || authPassword.length < 8) return
+    if (!onboarding.shopName.trim() || !onboarding.ownerName.trim() || !authUsername.trim() || !authEmail.trim() || authPassword.length < 8 || authPassword !== authConfirmPassword) return
     void completeOnboarding({
       shopName: onboarding.shopName.trim(),
       ownerName: onboarding.ownerName.trim(),
-      phone: onboarding.phone.trim(),
-      pin: onboarding.pin,
-    }, authEmail.trim(), authPassword)
+      username: authUsername.trim().toLowerCase(),
+      email: authEmail.trim(),
+      password: authPassword,
+    }).then((created) => {
+      if (created) setShowSetDevicePin(true)
+    })
   }
 
   const handleSignIn = () => {
     if (!authEmail.trim() || !authPassword) return
     void signIn(authEmail.trim(), authPassword)
+  }
+
+  const handleDevicePin = () => {
+    void unlockWithPin(devicePin).then((unlocked) => {
+      if (unlocked) setDevicePinValue('')
+    })
+  }
+
+  const handleSetDevicePin = () => {
+    void setDevicePin(devicePin).then((saved) => {
+      if (saved) {
+        setDevicePinValue('')
+        setShowSetDevicePin(false)
+      }
+    })
+  }
+
+  const handleCashierSignup = () => {
+    if (!authEmail.trim() || authPassword.length < 8) return
+    void registerCashier(authEmail.trim(), authPassword)
+  }
+
+  const handleResendConfirmation = () => {
+    if (authEmail.trim()) void resendConfirmation(authEmail.trim())
+  }
+
+  const handlePasswordResetRequest = () => {
+    if (authEmail.trim()) void requestPasswordReset(authEmail.trim())
+  }
+
+  const handlePasswordUpdate = () => {
+    if (authPassword.length < 8 || authPassword !== authConfirmPassword) return
+    void updatePassword(authPassword).then((updated) => {
+      if (updated) {
+        window.history.replaceState({}, '', window.location.pathname)
+        setAuthPassword('')
+        setAuthConfirmPassword('')
+        setAuthMode('signin')
+      }
+    })
+  }
+
+  const handleInviteCashier = () => {
+    if (!cashierEmail.trim()) return
+    void inviteCashier(cashierEmail.trim()).then((sent) => {
+      setInviteMessage(sent ? 'Invitation created. The cashier can register with this email.' : '')
+      if (sent) setCashierEmail('')
+    })
   }
 
   const openSettings = () => {
@@ -229,27 +299,64 @@ function App() {
 
   if (!isHydrated) return null
 
+  if (localUnlockRequired) {
+    return (
+      <div className="app-shell onboarding-shell">
+        <main className="onboarding-card">
+          <p className="eyebrow">SmartSort Sales Manager</p>
+          <h1>Fungua simu</h1>
+          <p className="onboarding-copy">Tumia PIN ya kifaa kuona data yako bila intaneti.</p>
+          <div className="onboarding-form">
+            <input aria-label="Device PIN" placeholder="PIN ya kifaa" inputMode="numeric" type="password" maxLength={6} value={devicePin} onChange={(event) => setDevicePinValue(event.target.value.replace(/\D/g, ''))} />
+            {authError && <div className="auth-message" role="alert">{authError}</div>}
+            <button type="button" className="primary-action" disabled={devicePin.length < 4} onClick={handleDevicePin}>Fungua</button>
+          </div>
+        </main>
+      </div>
+    )
+  }
+
+  if (showSetDevicePin && session && !devicePinConfigured) {
+    return (
+      <div className="app-shell onboarding-shell">
+        <main className="onboarding-card">
+          <p className="eyebrow">SmartSort Sales Manager</p>
+          <h1>Weka PIN ya kifaa</h1>
+          <p className="onboarding-copy">PIN hii inabaki kwenye simu hii pekee. Haitumiki kama password ya akaunti.</p>
+          <div className="onboarding-form">
+            <input aria-label="Device PIN" placeholder="PIN ya tarakimu 4 hadi 6" inputMode="numeric" type="password" maxLength={6} value={devicePin} onChange={(event) => setDevicePinValue(event.target.value.replace(/\D/g, ''))} />
+            <button type="button" className="primary-action" disabled={devicePin.length < 4} onClick={handleSetDevicePin}>Hifadhi PIN</button>
+          </div>
+        </main>
+      </div>
+    )
+  }
+
   if (!shopProfile || !session) {
     return (
       <div className="app-shell onboarding-shell">
         <main className="onboarding-card">
           <p className="eyebrow">SmartSort Sales Manager</p>
-          <h1>{authMode === 'signup' && !shopProfile ? 'Set up your shop' : 'Welcome back'}</h1>
-          <p className="onboarding-copy">{authMode === 'signup' && !shopProfile ? 'Create your secure account and add your shop details to start managing sales.' : 'Sign in to continue managing your shop securely.'}</p>
+          <h1>{authMode === 'signup' ? 'Set up your shop' : authMode === 'cashier-signup' ? 'Join your shop' : authMode === 'reset' ? 'Set a new password' : 'Welcome back'}</h1>
+          <p className="onboarding-copy">{authMode === 'signup' ? 'Create your secure owner account and add your shop details.' : authMode === 'cashier-signup' ? 'Use the email address your shop owner invited.' : authMode === 'reset' ? 'Choose a new password for your account.' : 'Sign in to continue managing your shop securely.'}</p>
           <div className="onboarding-form">
-            {authMode === 'signup' && !shopProfile && <>
+            {authMode === 'signup' && <>
               <input aria-label="Shop name" placeholder="Shop name" value={onboarding.shopName} onChange={(event) => setOnboarding({ ...onboarding, shopName: event.target.value })} />
               <input aria-label="Owner name" placeholder="Owner name" value={onboarding.ownerName} onChange={(event) => setOnboarding({ ...onboarding, ownerName: event.target.value })} />
-              <input aria-label="Phone number" placeholder="Phone number" inputMode="tel" value={onboarding.phone} onChange={(event) => setOnboarding({ ...onboarding, phone: event.target.value })} />
-              <input aria-label="PIN" placeholder="4-digit shop PIN" inputMode="numeric" type="password" maxLength={6} value={onboarding.pin} onChange={(event) => setOnboarding({ ...onboarding, pin: event.target.value.replace(/\D/g, '') })} />
+              <input aria-label="Username" placeholder="Username (a-z, 0-9, _, .)" autoComplete="username" value={authUsername} onChange={(event) => setAuthUsername(event.target.value.toLowerCase())} />
             </>}
-            <input aria-label="Email address" placeholder="Email address" type="email" autoComplete="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} />
-            <input aria-label="Password" placeholder="Password (8+ characters)" type="password" autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} />
+            {authMode !== 'reset' && <input aria-label={authMode === 'signin' ? 'Username or email' : 'Email address'} placeholder={authMode === 'signin' ? 'Username or email' : 'Email address'} type={authMode === 'signin' ? 'text' : 'email'} autoComplete={authMode === 'signin' ? 'username' : 'email'} value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} />}
+            {authMode !== 'reset' && <input aria-label="Password" placeholder="Password (8+ characters)" type="password" autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} />}
+            {(authMode === 'signup' || authMode === 'reset') && <input aria-label="Confirm password" placeholder="Confirm password" type="password" autoComplete="new-password" value={authConfirmPassword} onChange={(event) => setAuthConfirmPassword(event.target.value)} />}
+            {authMode !== 'cashier-signup' && typeof navigator !== 'undefined' && !navigator.onLine && <div className="auth-message">{authMode === 'signup' ? 'Signup inahitaji intaneti.' : 'Unahitaji intaneti kwa mara ya kwanza kwenye simu hii.'}</div>}
             {authError && <div className="auth-message" role="alert">{authError}</div>}
-            <button type="button" className="primary-action" disabled={authBusy} onClick={authMode === 'signup' && !shopProfile ? handleOnboarding : handleSignIn}>{authBusy ? 'Please wait…' : authMode === 'signup' && !shopProfile ? 'Create secure account' : 'Sign in'}</button>
-            <button type="button" className="auth-switch" onClick={() => setAuthMode(authMode === 'signup' ? 'signin' : 'signup')}>
-              {authMode === 'signup' ? 'Already have an account? Sign in' : 'Need an account? Create one'}
-            </button>
+            <button type="button" className="primary-action" disabled={authBusy || (authMode !== 'reset' && typeof navigator !== 'undefined' && !navigator.onLine)} onClick={authMode === 'signup' ? handleOnboarding : authMode === 'cashier-signup' ? handleCashierSignup : authMode === 'reset' ? handlePasswordUpdate : handleSignIn}>{authBusy ? 'Please wait...' : authMode === 'signup' ? 'Create owner account' : authMode === 'cashier-signup' ? 'Create cashier account' : authMode === 'reset' ? 'Update password' : 'Sign in'}</button>
+            {authMode === 'signin' && <button type="button" className="auth-switch" onClick={handlePasswordResetRequest}>Forgot password?</button>}
+            {(authMode === 'signin' || authMode === 'signup') && <button type="button" className="auth-switch" onClick={handleResendConfirmation}>Resend confirmation email</button>}
+            {authMode !== 'reset' && <button type="button" className="auth-switch" onClick={() => setAuthMode(authMode === 'signin' ? 'signup' : 'signin')}>
+              {authMode === 'signin' ? 'Need an owner account? Create one' : 'Already have an account? Sign in'}
+            </button>}
+            {authMode === 'signin' && <button type="button" className="auth-switch" onClick={() => setAuthMode('cashier-signup')}>Have a cashier invitation? Join a shop</button>}
           </div>
         </main>
       </div>
@@ -313,9 +420,12 @@ function App() {
             <button type="button" className="settings-close" aria-label="Close settings" onClick={() => setShowSettings(false)}>×</button>
           </div>
           <div className="settings-form">
-            <input aria-label={t.shopName} value={profileForm.shopName} onChange={(event) => setProfileForm({ ...profileForm, shopName: event.target.value })} />
-            <input aria-label={t.ownerName} value={profileForm.ownerName} onChange={(event) => setProfileForm({ ...profileForm, ownerName: event.target.value })} />
-            <input aria-label={t.phoneNumber} inputMode="tel" value={profileForm.phone} onChange={(event) => setProfileForm({ ...profileForm, phone: event.target.value })} />
+            <div className="settings-status"><span>Access level</span><strong>{session.role}</strong><small>{session.email ?? ''}</small></div>
+            {session.role === 'owner' && <>
+              <input aria-label={t.shopName} value={profileForm.shopName} onChange={(event) => setProfileForm({ ...profileForm, shopName: event.target.value })} />
+              <input aria-label={t.ownerName} value={profileForm.ownerName} onChange={(event) => setProfileForm({ ...profileForm, ownerName: event.target.value })} />
+              <input aria-label={t.phoneNumber} inputMode="tel" value={profileForm.phone} onChange={(event) => setProfileForm({ ...profileForm, phone: event.target.value })} />
+            </>}
             <label className="threshold-field">
               <span>{t.lowStockThreshold}</span>
               <div>
@@ -324,7 +434,16 @@ function App() {
               </div>
             </label>
             <div className="settings-status"><span>{t.sync}</span><strong>{syncStatus}</strong><small>{pendingSyncCount} queued</small></div>
-            <button type="button" className="primary-action" onClick={handleProfileUpdate}>{t.updateProfile}</button>
+            {session.role === 'owner' && <>
+              <button type="button" className="primary-action" onClick={handleProfileUpdate}>{t.updateProfile}</button>
+              <div className="cashier-invite">
+                <strong>Invite a cashier</strong>
+                <span>Cashiers can sell, but cannot change shop settings.</span>
+                <input aria-label="Cashier email" type="email" placeholder="cashier@example.com" value={cashierEmail} onChange={(event) => setCashierEmail(event.target.value)} />
+                <button type="button" className="inline-button" disabled={authBusy} onClick={handleInviteCashier}>Create invitation</button>
+                {inviteMessage && <small role="status">{inviteMessage}</small>}
+              </div>
+            </>}
             <button type="button" className="settings-logout" onClick={() => { logout(); setShowSettings(false) }}>Logout</button>
           </div>
         </div>
