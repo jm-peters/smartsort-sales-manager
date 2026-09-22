@@ -6,15 +6,6 @@ import type { AppSyncStatus, CartItem, CashSession, DebtRecord, ExpenseCategory,
 import { defaultLocale, type Locale } from '../lib/i18n'
 import type { User } from '@supabase/supabase-js'
 
-const initialProducts: ProductRecord[] = [
-  { id: 'p1', name: 'Sukari 1kg', buying_price: 130, selling_price: 170, low_limit: 5, unit: 'kg', stock: 12, denomination: 'full', base_unit: 'kg' },
-  { id: 'p2', name: 'Chai', buying_price: 80, selling_price: 120, low_limit: 6, unit: 'pcs', stock: 8, denomination: 'unit' },
-  { id: 'p3', name: 'Maziwa', buying_price: 95, selling_price: 140, low_limit: 4, unit: 'ltr', stock: 3, denomination: 'unit' },
-  { id: 'p4', name: 'Pasta', buying_price: 60, selling_price: 80, low_limit: 5, unit: 'pcs', stock: 0, denomination: 'unit' },
-  { id: 'p5', name: 'Mango', buying_price: 40, selling_price: 60, low_limit: 8, unit: 'pcs', stock: 15, denomination: 'unit' },
-  { id: 'p6', name: 'Beans', buying_price: 110, selling_price: 150, low_limit: 7, unit: 'kg', stock: 6, denomination: 'full', base_unit: 'kg' },
-]
-
 const today = () => new Date().toISOString().slice(0, 10)
 
 async function reportForDate(date: string): Promise<ReportSummary> {
@@ -154,7 +145,7 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  products: initialProducts,
+  products: [],
   cart: [],
   debts: initialDebts,
   activeTab: 'sell',
@@ -873,17 +864,36 @@ export const useAppStore = create<AppState>((set) => ({
   },
   hydrateLocalState: async () => {
     try {
-      const [metaSyncState, queuedRows, profileMeta, lowStockThresholdMeta, todaysSales, todaysExpenses, saleItems, creditLimitsMeta, localHeldCarts] = await Promise.all([
+      const [metaSyncState, queuedRows, profileMeta, lowStockThresholdMeta, localProducts, todaysSales, todaysExpenses, saleItems, creditLimitsMeta, localHeldCarts] = await Promise.all([
         localDb.syncState.get('products'),
         localDb.outbox.count(),
         localDb.meta.get('shop_profile'),
         localDb.meta.get('low_stock_threshold'),
+        localDb.products.toArray(),
         localDb.sales.where('created_at').aboveOrEqual(new Date().toISOString().slice(0, 10)).toArray(),
         localDb.expenses.where('created_at').aboveOrEqual(new Date().toISOString().slice(0, 10)).toArray(),
         localDb.saleItems.toArray(),
         localDb.meta.get('credit_limits'),
         localDb.heldCarts.toArray(),
       ])
+      const hydratedProducts: ProductRecord[] = localProducts.map((product) => {
+        const storedProduct = product as typeof product & {
+          stock?: number
+          denomination?: ProductRecord['denomination']
+          base_unit?: string
+        }
+        return {
+          id: storedProduct.id,
+          name: storedProduct.name,
+          buying_price: storedProduct.buying_price,
+          selling_price: storedProduct.selling_price,
+          low_limit: storedProduct.low_limit,
+          unit: storedProduct.unit,
+          stock: storedProduct.stock ?? 0,
+          denomination: storedProduct.denomination,
+          base_unit: storedProduct.base_unit,
+        }
+      })
 
       const salesSummary = todaysSales.reduce<ReportSummary>((summary, sale) => ({
         sales: summary.sales + (sale.status === 'completed' ? sale.total : 0),
@@ -899,7 +909,7 @@ export const useAppStore = create<AppState>((set) => ({
         const current = counts.get(item.product_id) ?? { count: 0, last: '' }
         counts.set(item.product_id, { count: current.count + item.qty, last: current.last })
       }
-      const quickSellProducts = productsFromState(useAppStore.getState().products, counts)
+      const quickSellProducts = productsFromState(hydratedProducts, counts)
       let localSession = await localDb.cashSessions.where('status').equals('open').first()
       if (!localSession) {
         localSession = {
@@ -922,6 +932,7 @@ export const useAppStore = create<AppState>((set) => ({
       const hasLocalSession = Boolean(localPin && cachedSession && typeof cachedSession.value === 'object')
       if (typeof navigator !== 'undefined' && !navigator.onLine && hasLocalSession) {
         set({
+          products: hydratedProducts,
           session: null,
           localUnlockRequired: true,
           devicePinConfigured: true,
@@ -946,6 +957,7 @@ export const useAppStore = create<AppState>((set) => ({
       const auth = await supabaseRemote.refresh()
       const context = auth.user ? await supabaseRemote.getShopContext() : null
       set({
+        products: hydratedProducts,
         session: auth.user && context ? sessionFromUser(auth.user, context.role) : null,
         devicePinConfigured: Boolean(localPin),
         authError: auth.error ?? (auth.user && !context ? 'Your account is not linked to a shop yet.' : null),

@@ -114,40 +114,6 @@
   font-weight: 700;
 }
 
-.low-stock-alert {
-  position: relative;
-  width: 42px;
-  height: 42px;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  background: #ffffff;
-  color: #64748b;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.low-stock-alert.has-alerts {
-  border-color: #fdba74;
-  background: #fff7ed;
-  color: #c2410c;
-}
-
-.low-stock-alert span {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  min-width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  background: #dc2626;
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 800;
-  line-height: 18px;
-  text-align: center;
-}
-
 .sync-strip {
   display: flex;
   align-items: center;
@@ -291,6 +257,52 @@
 
 .settings-status small {
   margin-left: auto;
+}
+
+.product-guide {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  background: #eff6ff;
+  color: #1e3a5f;
+  padding: 12px;
+}
+
+.product-guide-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: #dbeafe;
+  color: #1e6f9f;
+}
+
+.product-guide h3,
+.product-guide p {
+  margin: 0;
+}
+
+.product-guide h3 {
+  font-size: 14px;
+}
+
+.product-guide p,
+.product-guide li {
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.product-guide p {
+  margin-top: 4px;
+}
+
+.product-guide ol {
+  margin: 8px 0 0;
+  padding-left: 18px;
 }
 
 .settings-logout {
@@ -475,62 +487,6 @@
   display: grid;
   grid-template-columns: 1.2fr 1fr 1.2fr 0.6fr 1fr auto;
   gap: 8px;
-}
-
-.restock-section {
-  border: 1px solid #fed7aa;
-  border-radius: 12px;
-  background: #fff7ed;
-  padding: 12px;
-}
-
-.restock-header,
-.restock-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.restock-header h3 {
-  margin: 0;
-  font-size: 16px;
-}
-
-.restock-header select,
-.restock-row input {
-  min-height: 40px;
-  border: 1px solid #fed7aa;
-  border-radius: 8px;
-  background: #ffffff;
-  padding: 7px 9px;
-}
-
-.restock-row {
-  margin-top: 8px;
-  border-top: 1px solid #fed7aa;
-  padding-top: 8px;
-}
-
-.restock-row span,
-.restock-empty,
-.restock-total {
-  color: #9a3412;
-  font-size: 12px;
-}
-
-.restock-row button {
-  border: 1px solid #fdba74;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #c2410c;
-}
-
-.restock-total {
-  border-top: 1px solid #fed7aa;
-  margin-top: 10px;
-  padding-top: 9px;
-  font-weight: 700;
 }
 
 .stock-quantity {
@@ -757,6 +713,12 @@
   font-size: 22px;
 }
 
+.product-count {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .low-stock-summary {
   border: 1px solid #e2e8f0;
   border-radius: 9px;
@@ -793,6 +755,90 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.stock-empty-guide {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px dashed #9ed8b9;
+  border-radius: 14px;
+  background: #f0fdf4;
+  padding: 14px;
+  animation: rise-in 420ms ease both;
+}
+
+.stock-empty-guide h3,
+.stock-empty-guide p {
+  margin: 0;
+}
+
+.stock-empty-guide h3 {
+  font-size: 15px;
+}
+
+.stock-empty-guide p {
+  margin-top: 3px;
+  color: #475569;
+  font-size: 12px;
+}
+
+.empty-dashboard {
+  grid-column: 1 / -1;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  border: 1px dashed #9ed8b9;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #f0fdf4, #eff6ff);
+  padding: 30px 20px;
+  text-align: center;
+  animation: rise-in 420ms ease both;
+}
+
+.empty-dashboard-mark {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  background: #d1fae5;
+  color: #087443;
+}
+
+.empty-dashboard h2,
+.empty-dashboard p {
+  margin: 0;
+}
+
+.empty-dashboard h2 {
+  font-size: 21px;
+}
+
+.empty-dashboard p {
+  max-width: 390px;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.empty-dashboard .primary-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 4px;
+}
+
+.empty-inline {
+  grid-column: 1 / -1;
+  padding: 24px 12px;
+  color: #64748b;
+  text-align: center;
+}
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .stock-row,

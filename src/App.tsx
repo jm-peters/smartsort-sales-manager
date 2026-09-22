@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import {
   ArrowRight,
   ArrowUp,
-  Bell,
   Box,
   CalendarDays,
   CircleDollarSign,
@@ -102,8 +101,6 @@ function App() {
   const [newProductStock, setNewProductStock] = useState('')
   const [newProductDenomination, setNewProductDenomination] = useState<'quarter' | 'half' | 'three-quarter' | 'full' | 'unit'>('full')
   const [stockReceipt, setStockReceipt] = useState<Record<string, string>>({})
-  const [restockCoverDays, setRestockCoverDays] = useState(7)
-  const [restockQuantities, setRestockQuantities] = useState<Record<string, string>>({})
   const [debtCustomer, setDebtCustomer] = useState('')
   const [debtPhone, setDebtPhone] = useState('')
   const [debtProductId, setDebtProductId] = useState(products[0]?.id ?? '')
@@ -136,14 +133,6 @@ function App() {
   const cartCount = cart.reduce((total, item) => total + item.qty, 0)
   const debtTotal = debts.reduce((total, debt) => total + Math.max(debt.amount - debt.paid, 0), 0)
   const visibleProducts = products.filter((product) => product.name.toLocaleLowerCase().includes(searchTerm.toLocaleLowerCase().trim()))
-  const restockCandidates = products
-    .filter((product) => product.stock <= lowStockThreshold)
-    .sort((left, right) => left.stock - right.stock)
-  const restockTotal = restockCandidates.reduce((total, product) => {
-    const suggested = Number(restockQuantities[product.id] ?? Math.max(lowStockThreshold * 2 - product.stock, 1))
-    return total + suggested * product.buying_price
-  }, 0)
-
   const handleAddDebt = () => {
     const product = products.find((item) => item.id === debtProductId)
     const qty = Number(debtQuantity)
@@ -374,10 +363,6 @@ function App() {
           <button type="button" className="sync-button" onClick={() => void syncNow()}>
             {syncStatus === 'syncing' ? `${t.sync}…` : t.sync}
           </button>
-          <button type="button" className={`low-stock-alert ${restockCandidates.length > 0 ? 'has-alerts' : ''}`} onClick={() => setActiveTab('stock')} aria-label={`${t.lowStockAlert}: ${restockCandidates.length}`}>
-            <Bell size={17} />
-            {restockCandidates.length > 0 && <span>{restockCandidates.length}</span>}
-          </button>
           <select
             aria-label={t.language}
             value={locale}
@@ -434,6 +419,18 @@ function App() {
               </div>
             </label>
             <div className="settings-status"><span>{t.sync}</span><strong>{syncStatus}</strong><small>{pendingSyncCount} queued</small></div>
+            <section className="product-guide" aria-labelledby="product-guide-title">
+              <div className="product-guide-icon"><Box size={18} /></div>
+              <div>
+                <h3 id="product-guide-title">How to add products</h3>
+                <p>Open Stock, enter the product name, selling price, and opening quantity, then select Add product.</p>
+                <ol>
+                  <li>Start with the products you sell most.</li>
+                  <li>Use the quantity you have on the shelf.</li>
+                  <li>Receive more stock from each product row later.</li>
+                </ol>
+              </div>
+            </section>
             {session.role === 'owner' && <>
               <button type="button" className="primary-action" onClick={handleProfileUpdate}>{t.updateProfile}</button>
               <div className="cashier-invite">
@@ -519,7 +516,17 @@ function App() {
             </section>
 
             <section className="product-grid" aria-label="Products">
-              {visibleProducts.map((product) => {
+              {products.length === 0 ? (
+                <section className="empty-dashboard" aria-labelledby="empty-dashboard-title">
+                  <div className="empty-dashboard-mark"><Box size={28} /></div>
+                  <span className="eyebrow">Your shop is ready</span>
+                  <h2 id="empty-dashboard-title">Start with your products</h2>
+                  <p>Add the items on your shelves to make this dashboard yours. They will appear here ready for quick selling.</p>
+                  <button type="button" className="primary-action" onClick={() => setActiveTab('stock')}><Plus size={17} /> Add your first product</button>
+                </section>
+              ) : visibleProducts.length === 0 ? (
+                <div className="empty-inline" role="status">No products match “{searchTerm}”.</div>
+              ) : visibleProducts.map((product) => {
                 const isLowStock = product.stock <= lowStockThreshold
                 const isOut = product.stock === 0
 
@@ -575,10 +582,11 @@ function App() {
       {activeTab === 'stock' && (
         <main className="panel-card">
           <div className="panel-header">
-            <h2>{t.stock}</h2>
-            <button type="button" className={`low-stock-summary ${restockCandidates.length > 0 ? 'has-alerts' : ''}`} onClick={() => document.querySelector('.restock-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
-              <Bell size={15} /> {restockCandidates.length} {t.lowStock}
-            </button>
+            <div>
+              <span className="eyebrow">Build your catalogue</span>
+              <h2>{t.stock}</h2>
+            </div>
+            {products.length > 0 && <span className="product-count">{products.length} product{products.length === 1 ? '' : 's'}</span>}
           </div>
 
           <div className="stock-entry">
@@ -595,37 +603,13 @@ function App() {
             <button type="button" className="inline-button" onClick={handleCreateProduct}><Plus size={16} />{t.addProduct}</button>
           </div>
 
-          <section className="restock-section">
-            <div className="restock-header">
-              <h3>{t.restockList}</h3>
-              <select aria-label="Restock cover days" value={restockCoverDays} onChange={(event) => setRestockCoverDays(Number(event.target.value))}>
-                <option value="3">3 days</option>
-                <option value="7">7 days</option>
-                <option value="14">14 days</option>
-              </select>
+          {products.length === 0 && <section className="stock-empty-guide" aria-labelledby="stock-guide-title">
+            <div className="empty-dashboard-mark"><Plus size={24} /></div>
+            <div>
+              <h3 id="stock-guide-title">Add your first product</h3>
+              <p>Give it a name, selling price, and opening stock. You can update quantities any time.</p>
             </div>
-            {restockCandidates.length === 0 ? (
-              <span className="restock-empty">No products need restocking.</span>
-            ) : (
-              <>
-                {restockCandidates.map((product) => {
-                  const suggested = Math.max(lowStockThreshold * 2 - product.stock, 1)
-                  const quantity = restockQuantities[product.id] ?? String(suggested)
-                  return (
-                    <div className="restock-row" key={product.id}>
-                      <div>
-                        <strong>{product.name}</strong>
-                        <span>{product.stock} left · {t.suggested} {suggested}</span>
-                      </div>
-                      <input aria-label={`Restock quantity for ${product.name}`} inputMode="numeric" value={quantity} onChange={(event) => setRestockQuantities((current) => ({ ...current, [product.id]: event.target.value }))} />
-                      <button type="button" aria-label={`${t.received} ${product.name}`} onClick={() => { void receiveStock(product.id, Number(quantity)); setRestockQuantities((current) => ({ ...current, [product.id]: '' })) }}><ArrowUp size={16} /></button>
-                    </div>
-                  )
-                })}
-                <div className="restock-total">{t.estimatedCost}: KES {restockTotal.toLocaleString('en-KE')} · {restockCoverDays} days</div>
-              </>
-            )}
-          </section>
+          </section>}
 
           <div className="stock-list">
             {products.map((product) => (
