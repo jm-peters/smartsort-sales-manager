@@ -16,6 +16,7 @@ export type RemoteAdapter = {
   requestPasswordReset: (email: string) => Promise<{ error: string | null }>
   updatePassword: (password: string) => Promise<{ error: string | null }>
   claimCashierInvitation: () => Promise<{ error: string | null }>
+  ensureMyShop: () => Promise<{ error: string | null }>
   getShopContext: () => Promise<{ shopId: string; shopName: string; ownerName: string; phone: string; role: 'owner' | 'cashier'; username?: string; email?: string; onboardingStep?: string } | null>
   inviteCashier: (email: string) => Promise<{ error: string | null }>
   refresh: () => Promise<AuthResult>

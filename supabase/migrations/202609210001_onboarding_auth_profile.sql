@@ -152,6 +152,56 @@ drop trigger if exists on_auth_user_created_create_shop on auth.users;
 create trigger on_auth_user_created_create_shop after insert on auth.users
 for each row execute function public.create_owner_shop();
 
+create or replace function public.ensure_my_shop()
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  current_user_id uuid := auth.uid();
+  account auth.users%rowtype;
+  new_shop_id uuid;
+  username_value text;
+  shop_name_value text;
+  owner_name_value text;
+  phone_value text;
+begin
+  if current_user_id is null then
+    raise exception 'Authentication is required.' using errcode = '42501';
+  end if;
+
+  if exists (select 1 from public.shop_members where user_id = current_user_id) then
+    return;
+  end if;
+
+  select * into account from auth.users where id = current_user_id;
+  username_value := lower(trim(coalesce(account.raw_user_meta_data ->> 'username', '')));
+  shop_name_value := trim(coalesce(account.raw_user_meta_data ->> 'shopName', ''));
+  owner_name_value := trim(coalesce(account.raw_user_meta_data ->> 'ownerName', ''));
+  phone_value := nullif(trim(coalesce(account.raw_user_meta_data ->> 'phone', '')), '');
+
+  if username_value = '' or shop_name_value = '' or owner_name_value = '' then
+    raise exception 'Your account profile is incomplete.' using errcode = '22023';
+  end if;
+
+  insert into public.shops (name, owner_name, phone, contact_email)
+  values (shop_name_value, owner_name_value, phone_value, lower(account.email))
+  returning id into new_shop_id;
+
+  insert into public.shop_members (shop_id, user_id, role, username, email, phone)
+  values (new_shop_id, current_user_id, 'owner', username_value, lower(account.email), phone_value);
+
+  insert into public.usernames (username_lower, username_display, shop_user_id, shop_id)
+  values (username_value, account.raw_user_meta_data ->> 'username', current_user_id, new_shop_id);
+
+  insert into public.shop_subscriptions (shop_id, plan_id, trial_ends_at)
+  select new_shop_id, id, now() + interval '30 days'
+  from public.subscription_plans where code = 'standard_daily';
+exception when unique_violation then
+  raise exception 'That username or shop already exists.' using errcode = '23505';
+end;
+$$;
+
+revoke all on function public.ensure_my_shop() from public;
+grant execute on function public.ensure_my_shop() to authenticated;
+
 drop function if exists public.get_my_shop_context();
 create or replace function public.get_my_shop_context()
 returns table (shop_id uuid, shop_name text, owner_name text, phone text, role text, username text, email text, onboarding_step text)

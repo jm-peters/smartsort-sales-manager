@@ -81,6 +81,11 @@ export const supabaseRemote: RemoteAdapter = {
     const { error } = await supabase.rpc('claim_cashier_invitation')
     return { error: error?.message ?? null }
   },
+  async ensureMyShop() {
+    if (!supabase) return { error: 'Supabase is not configured.' }
+    const { error } = await supabase.rpc('ensure_my_shop')
+    return { error: error?.message ?? null }
+  },
   async getShopContext() {
     if (!supabase) return null
     const { data, error } = await supabase.rpc('get_my_shop_context')

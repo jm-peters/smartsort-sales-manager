@@ -684,6 +684,11 @@ export const useAppStore = create<AppState>((set) => ({
       set({ authBusy: false, authError: claim.error, session: null })
       return false
     }
+    const provisioning = await supabaseRemote.ensureMyShop()
+    if (provisioning.error) {
+      set({ authBusy: false, authError: provisioning.error, session: null })
+      return false
+    }
     const context = await supabaseRemote.getShopContext()
     if (!context) {
       set({ authBusy: false, authError: 'Your account is not linked to a shop yet.', session: null })
@@ -778,7 +783,12 @@ export const useAppStore = create<AppState>((set) => ({
     }
     const profile = { shopName: input.shopName.trim(), ownerName: input.ownerName.trim(), phone: '', pin: '' }
     await localDb.meta.put({ key: 'shop_profile', value: profile })
-    if (result.user) {
+    if (result.user && result.session) {
+      const provisioning = await supabaseRemote.ensureMyShop()
+      if (provisioning.error) {
+        set({ authBusy: false, authError: provisioning.error })
+        return false
+      }
       const context = await supabaseRemote.getShopContext()
       if (!context) {
         set({ authBusy: false, authError: 'Account created, but the shop could not be provisioned.' })
