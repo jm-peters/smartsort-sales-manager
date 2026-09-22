@@ -5,6 +5,8 @@ alter table public.shops
   drop constraint if exists shops_phone_key;
 
 alter table public.shops
+  add column if not exists avatar_emoji text default '🏪',
+  add column if not exists tagline text,
   add column if not exists contact_email text,
   add column if not exists alt_phone text,
   add column if not exists county text,

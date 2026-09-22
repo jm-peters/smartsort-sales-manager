@@ -52,6 +52,15 @@ export type ShopProfile = {
   ownerName: string
   phone: string
   pin: string
+  avatarEmoji?: string
+  tagline?: string
+  contactEmail?: string
+  altPhone?: string
+  county?: string
+  subCounty?: string
+  town?: string
+  landmark?: string
+  createdAt?: string
 }
 
 export type SignupInput = {

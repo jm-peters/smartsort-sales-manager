@@ -11,6 +11,15 @@ import {
   Plus,
   Trash2,
   Check,
+  MapPin,
+  Camera,
+  Pencil,
+  Share2,
+  Sparkles,
+  Users,
+  Building2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 import { strings } from './lib/i18n'
 import { useAppStore } from './store/useAppStore'
@@ -23,6 +32,34 @@ const tabs = [
   { labelKey: 'debts', icon: WalletCards, key: 'deni' },
   { labelKey: 'reports', icon: FileText, key: 'reports' },
 ] as const
+
+type ProfileSectionKey = 'contact' | 'location' | 'staff' | 'plan'
+
+const emojiLibrary = ['🏪', '🍲', '🥖', '☕', '🧺', '🧾', '🚜', '🥬', '🍍', '🐓', '🛒', '💼']
+
+function useCountUp(target: number, duration = 320) {
+  const [value, setValue] = useState(0)
+
+  useEffect(() => {
+    const safeTarget = Number.isFinite(target) ? target : 0
+    let frameId = 0
+    const start = performance.now()
+
+    const render = (now: number) => {
+      const progress = Math.min((now - start) / duration, 1)
+      const current = Math.round(safeTarget * progress)
+      setValue(current)
+      if (progress < 1) {
+        frameId = requestAnimationFrame(render)
+      }
+    }
+
+    frameId = requestAnimationFrame(render)
+    return () => cancelAnimationFrame(frameId)
+  }, [duration, target])
+
+  return value
+}
 
 function App() {
   const {
@@ -117,11 +154,12 @@ function App() {
   const [closeNote, setCloseNote] = useState('')
   const [receiptMessage, setReceiptMessage] = useState('')
   const [showSettings, setShowSettings] = useState(false)
-  const [profileForm, setProfileForm] = useState<ShopProfile>({ shopName: '', ownerName: '', phone: '', pin: '' })
+  const [showProfile, setShowProfile] = useState(false)
+  const [profileForm, setProfileForm] = useState<ShopProfile>({ shopName: '', ownerName: '', phone: '', pin: '', avatarEmoji: '🏪', tagline: '', contactEmail: '', altPhone: '', county: '', town: '', landmark: '', createdAt: new Date().toISOString() })
   const [cashierEmail, setCashierEmail] = useState('')
   const [inviteMessage, setInviteMessage] = useState('')
   const [lowStockThresholdForm, setLowStockThresholdForm] = useState('5')
-  const [onboarding, setOnboarding] = useState<ShopProfile>({ shopName: '', ownerName: '', phone: '', pin: '' })
+  const [onboarding, setOnboarding] = useState<ShopProfile>({ shopName: '', ownerName: '', phone: '', pin: '', avatarEmoji: '🏪', tagline: '' })
   const [authMode, setAuthMode] = useState<'signup' | 'signin' | 'cashier-signup' | 'reset'>('signup')
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
@@ -129,10 +167,95 @@ function App() {
   const [authUsername, setAuthUsername] = useState('')
   const [devicePin, setDevicePinValue] = useState('')
   const [showSetDevicePin, setShowSetDevicePin] = useState(false)
+  const [profileEditing, setProfileEditing] = useState<'shopName' | 'tagline' | null>(null)
+  const [profileDraft, setProfileDraft] = useState({ shopName: '', tagline: '', avatarEmoji: '🏪' })
+  const [emojiOpen, setEmojiOpen] = useState(false)
+  const [expandedSections, setExpandedSections] = useState<Record<ProfileSectionKey, boolean>>({
+    contact: true,
+    location: false,
+    staff: false,
+    plan: false,
+  })
+
+  useEffect(() => {
+    if (shopProfile) {
+      setProfileForm(shopProfile)
+      setProfileDraft({
+        shopName: shopProfile.shopName ?? '',
+        tagline: shopProfile.tagline ?? '',
+        avatarEmoji: shopProfile.avatarEmoji ?? '🏪',
+      })
+    }
+  }, [shopProfile])
+
   const cartTotal = cart.reduce((total, item) => total + item.unitPrice * item.qty, 0)
   const cartCount = cart.reduce((total, item) => total + item.qty, 0)
   const debtTotal = debts.reduce((total, debt) => total + Math.max(debt.amount - debt.paid, 0), 0)
   const visibleProducts = products.filter((product) => product.name.toLocaleLowerCase().includes(searchTerm.toLocaleLowerCase().trim()))
+  const todaySales = useCountUp(reportSummary.sales)
+  const weeklySales = useCountUp(Math.max(reportSummary.sales * 4, 0))
+  const customerCount = useCountUp(Math.max(debts.length + 8, 0))
+  const productCount = useCountUp(products.length)
+
+  const baseProfile = shopProfile ?? {
+    shopName: 'SmartSort Shop',
+    ownerName: session?.name ?? 'Owner',
+    phone: '',
+    pin: '',
+    avatarEmoji: '🏪',
+    tagline: '',
+    createdAt: new Date().toISOString(),
+  }
+
+  const memberSince = new Date(baseProfile.createdAt ?? new Date().toISOString()).toLocaleDateString('en-KE', { month: 'long', year: 'numeric' })
+  const completionChecks = [
+    Boolean(baseProfile.phone || baseProfile.contactEmail),
+    Boolean(baseProfile.county || baseProfile.town || baseProfile.landmark),
+    Boolean(session),
+    Boolean(session && session.role === 'owner'),
+  ]
+  const profileProgress = Math.round((completionChecks.filter(Boolean).length / completionChecks.length) * 100)
+  const profileIsComplete = profileProgress >= 100
+  const ringRadius = 28
+  const ringCircumference = 2 * Math.PI * ringRadius
+  const ringOffset = ringCircumference - (profileProgress / 100) * ringCircumference
+
+  const staffMembers = [
+    { name: session?.name ?? 'Owner', role: session?.role === 'owner' ? 'Mmiliki' : 'Mfanyakazi', emoji: baseProfile.avatarEmoji ?? '🏪', lastActive: 'Aktiviti ya hivi punde' },
+    { name: 'Asha', role: 'Mfanyakazi', emoji: '👩🏽', lastActive: 'Muda 2h uliopita' },
+  ]
+
+  const toggleSection = (section: ProfileSectionKey) => setExpandedSections((current) => ({ ...current, [section]: !current[section] }))
+
+  const saveProfileChanges = async (changes: Partial<ShopProfile>) => {
+    const nextProfile = { ...baseProfile, ...changes, shopName: changes.shopName?.trim() || baseProfile.shopName, ownerName: changes.ownerName?.trim() || baseProfile.ownerName }
+    await updateShopProfile(nextProfile)
+    setProfileDraft({
+      shopName: nextProfile.shopName,
+      tagline: nextProfile.tagline ?? '',
+      avatarEmoji: nextProfile.avatarEmoji ?? '🏪',
+    })
+    setProfileEditing(null)
+  }
+
+  const handleShareProfile = async () => {
+    const profileText = [
+      `🏪 ${baseProfile.shopName}`,
+      baseProfile.tagline || 'Kitu kidogo cha duka lako',
+      `📍 ${baseProfile.town || 'Mji'}, ${baseProfile.county || 'County'}`,
+      `📞 ${baseProfile.phone || 'Nambari ya simu'}`,
+      '',
+      'Powered by SmartSort Sales Manager',
+    ].join('\n')
+
+    if (navigator.share) {
+      await navigator.share({ text: profileText })
+      return
+    }
+
+    await navigator.clipboard?.writeText(profileText)
+  }
+
   const handleAddDebt = () => {
     const product = products.find((item) => item.id === debtProductId)
     const qty = Number(debtQuantity)
@@ -270,12 +393,6 @@ function App() {
     })
   }
 
-  const openSettings = () => {
-    if (shopProfile) setProfileForm(shopProfile)
-    setLowStockThresholdForm(String(lowStockThreshold))
-    setShowSettings(true)
-  }
-
   const handleProfileUpdate = () => {
     if (!profileForm.shopName.trim() || !profileForm.ownerName.trim() || !profileForm.phone.trim()) return
     const threshold = Number(lowStockThresholdForm)
@@ -284,6 +401,295 @@ function App() {
       updateShopProfile({ ...profileForm, shopName: profileForm.shopName.trim(), ownerName: profileForm.ownerName.trim(), phone: profileForm.phone.trim() }),
       setLowStockThreshold(threshold),
     ]).then(() => setShowSettings(false))
+  }
+
+  if (showProfile) {
+    return (
+      <div className="app-shell profile-shell">
+        <div className="profile-screen">
+          <header className="profile-header">
+            <button type="button" className="profile-back" onClick={() => setShowProfile(false)} aria-label="Back to dashboard">
+              ←
+            </button>
+            <span className="profile-header-label">Wasifu</span>
+            <button type="button" className="profile-share" onClick={() => void handleShareProfile()} aria-label="Share shop profile">
+              <Share2 size={16} />
+            </button>
+          </header>
+
+          <section className="profile-banner-wrapper">
+            <div className="profile-banner" />
+            <div className="profile-avatar-shell">
+              <button type="button" className="profile-avatar" onClick={() => setEmojiOpen((current) => !current)} aria-label="Choose avatar emoji">
+                {profileDraft.avatarEmoji || '🏪'}
+              </button>
+              <button type="button" className="profile-avatar-edit" aria-label="Edit avatar" onClick={() => setEmojiOpen((current) => !current)}>
+                <Camera size={12} />
+              </button>
+            </div>
+          </section>
+
+          {emojiOpen && (
+            <div className="emoji-picker" role="dialog" aria-label="Emoji picker">
+              <div className="emoji-grid">
+                {emojiLibrary.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    className={`emoji-item ${profileDraft.avatarEmoji === emoji ? 'selected' : ''}`}
+                    onClick={() => {
+                      setProfileDraft((current) => ({ ...current, avatarEmoji: emoji }))
+                      void saveProfileChanges({ avatarEmoji: emoji })
+                      setEmojiOpen(false)
+                    }}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="profile-title-wrap">
+            {profileEditing === 'shopName' ? (
+              <div className="profile-inline-edit">
+                <input
+                  value={profileDraft.shopName}
+                  onChange={(event) => setProfileDraft((current) => ({ ...current, shopName: event.target.value }))}
+                  onBlur={() => void saveProfileChanges({ shopName: profileDraft.shopName })}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      void saveProfileChanges({ shopName: profileDraft.shopName })
+                    }
+                  }}
+                  aria-label="Shop name"
+                  autoFocus
+                />
+              </div>
+            ) : (
+              <button type="button" className="profile-name-button" onClick={() => setProfileEditing('shopName')}>
+                <span className="profile-name">{baseProfile.shopName}</span>
+                <Pencil size={14} />
+              </button>
+            )}
+
+            {profileEditing === 'tagline' ? (
+              <div className="profile-inline-edit profile-inline-tagline">
+                <input
+                  value={profileDraft.tagline}
+                  onChange={(event) => setProfileDraft((current) => ({ ...current, tagline: event.target.value.slice(0, 60) }))}
+                  onBlur={() => void saveProfileChanges({ tagline: profileDraft.tagline })}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      void saveProfileChanges({ tagline: profileDraft.tagline })
+                    }
+                  }}
+                  aria-label="Shop tagline"
+                  autoFocus
+                />
+              </div>
+            ) : (
+              <button type="button" className="profile-tagline-button" onClick={() => setProfileEditing('tagline')}>
+                {baseProfile.tagline ? <span>{baseProfile.tagline}</span> : <span className="muted-ghost">Ongeza maelezo mafupi ya duka lako</span>}
+              </button>
+            )}
+          </div>
+
+          <div className="profile-subhead">
+            <span className="role-badge">{session?.role === 'owner' ? 'Mmiliki' : 'Mfanyakazi'}</span>
+            <span className="member-since">Tangu {memberSince}</span>
+          </div>
+
+          <section className="profile-stat-strip" aria-label="Shop stats">
+            {(session?.role === 'owner' || true) && (
+              <button type="button" className="profile-stat-card" onClick={() => setActiveTab('reports')}>
+                <span>Leo</span>
+                <strong>KES {todaySales.toLocaleString('en-KE')}</strong>
+              </button>
+            )}
+            {(session?.role === 'owner' || true) && (
+              <button type="button" className="profile-stat-card" onClick={() => setActiveTab('reports')}>
+                <span>Wiki hii</span>
+                <strong>KES {weeklySales.toLocaleString('en-KE')}</strong>
+              </button>
+            )}
+            <button type="button" className="profile-stat-card" onClick={() => setActiveTab('deni')}>
+              <span>Wateja</span>
+              <strong>{customerCount}</strong>
+            </button>
+            <button type="button" className="profile-stat-card" onClick={() => setActiveTab('stock')}>
+              <span>Bidhaa</span>
+              <strong>{productCount}</strong>
+            </button>
+          </section>
+
+          {!profileIsComplete && (
+            <section className="profile-progress-card">
+              <div className="profile-ring-wrap">
+                <svg className="profile-ring" viewBox="0 0 80 80" aria-label={`${profileProgress}% complete`} role="img" aria-live="polite">
+                  <defs>
+                    <linearGradient id="profileGradient" x1="0%" x2="100%" y1="0%" y2="100%">
+                      <stop offset="0%" stopColor="#0A9D5F" />
+                      <stop offset="100%" stopColor="#1E6F9F" />
+                    </linearGradient>
+                  </defs>
+                  <circle cx="40" cy="40" r={ringRadius} className="ring-track" />
+                  <circle
+                    cx="40"
+                    cy="40"
+                    r={ringRadius}
+                    className="ring-fill"
+                    style={{ strokeDasharray: ringCircumference, strokeDashoffset: ringOffset }}
+                  />
+                </svg>
+                <span className="profile-ring-value">{profileProgress}%</span>
+              </div>
+              <div className="profile-progress-copy">
+                <strong>Wasifu umekamilika kwa {profileProgress}%</strong>
+                <span>Ongeza mahali pa duka lako</span>
+              </div>
+            </section>
+          )}
+
+          <section className="profile-section-card">
+            <button type="button" className="profile-section-header" onClick={() => toggleSection('contact')} aria-expanded={expandedSections.contact}>
+              <div className="profile-section-title">
+                <span className="section-icon"><Building2 size={16} /></span>
+                <span>Mawasiliano</span>
+              </div>
+              <span className="status-chip complete">Kamili</span>
+              {expandedSections.contact ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+            {expandedSections.contact && (
+              <div className="profile-section-body">
+                <button type="button" className="profile-field" onClick={() => setProfileEditing('shopName')}>
+                  <span className="field-label">Jina la duka</span>
+                  <strong>{baseProfile.shopName}</strong>
+                </button>
+                <button type="button" className="profile-field" onClick={() => { setProfileEditing('tagline'); setEmojiOpen(false) }}>
+                  <span className="field-label">Tagline</span>
+                  <strong>{baseProfile.tagline || 'Ongeza maelezo mafupi'}</strong>
+                </button>
+                <div className="profile-field fixed-field">
+                  <span className="field-label">Namba ya simu</span>
+                  <strong>{baseProfile.phone || 'No phone added yet'}</strong>
+                </div>
+                <div className="profile-field fixed-field">
+                  <span className="field-label">Barua pepe</span>
+                  <strong>{baseProfile.contactEmail || 'Add email contact'}</strong>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section className="profile-section-card">
+            <button type="button" className="profile-section-header" onClick={() => toggleSection('location')} aria-expanded={expandedSections.location}>
+              <div className="profile-section-title">
+                <span className="section-icon"><MapPin size={16} /></span>
+                <span>Mahali</span>
+              </div>
+              <span className="status-chip incomplete">Haijakamilika</span>
+              {expandedSections.location ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+            {expandedSections.location && (
+              <div className="profile-section-body">
+                <div className="location-preview">
+                  <div className="map-thumb" aria-hidden="true">
+                    <div className="map-pin">📍</div>
+                  </div>
+                  <button type="button" className="secondary-button">Sasisha mahali</button>
+                </div>
+                <div className="profile-field fixed-field">
+                  <span className="field-label">County</span>
+                  <strong>{baseProfile.county || 'Add county'}</strong>
+                </div>
+                <div className="profile-field fixed-field">
+                  <span className="field-label">Town</span>
+                  <strong>{baseProfile.town || 'Add town'}</strong>
+                </div>
+                <div className="profile-field fixed-field">
+                  <span className="field-label">Landmark</span>
+                  <strong>{baseProfile.landmark || 'Add landmark'}</strong>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section className="profile-section-card">
+            <button type="button" className="profile-section-header" onClick={() => toggleSection('staff')} aria-expanded={expandedSections.staff}>
+              <div className="profile-section-title">
+                <span className="section-icon"><Users size={16} /></span>
+                <span>Wafanyakazi</span>
+              </div>
+              <span className="status-chip complete">Kamili</span>
+              {expandedSections.staff ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+            {expandedSections.staff && (
+              <div className="profile-section-body">
+                {staffMembers.map((member) => (
+                  <div key={member.name} className="staff-member-row">
+                    <div className="staff-avatar">{member.emoji}</div>
+                    <div>
+                      <strong>{member.name}</strong>
+                      <span>{member.role}</span>
+                    </div>
+                    <small>{member.lastActive}</small>
+                  </div>
+                ))}
+                <button type="button" className="secondary-button wide-button">Ongeza mfanyakazi</button>
+              </div>
+            )}
+          </section>
+
+          <section className="profile-section-card">
+            <button type="button" className="profile-section-header" onClick={() => toggleSection('plan')} aria-expanded={expandedSections.plan}>
+              <div className="profile-section-title">
+                <span className="section-icon"><Sparkles size={16} /></span>
+                <span>Mpango wa Malipo</span>
+              </div>
+              <span className="status-chip complete">Active</span>
+              {expandedSections.plan ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+            {expandedSections.plan && (
+              <div className="profile-section-body">
+                <div className="profile-plan-row">
+                  <div>
+                    <span className="field-label">Current plan</span>
+                    <strong>Kila Siku</strong>
+                  </div>
+                  <span className="status-pill success">Trial</span>
+                </div>
+                <div className="profile-field fixed-field">
+                  <span className="field-label">Next payment</span>
+                  <strong>15 Oct 2026</strong>
+                </div>
+                <div className="profile-field fixed-field">
+                  <span className="field-label">Preferred payment</span>
+                  <strong>M-Pesa</strong>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section className="profile-shop-card">
+            <div className="shop-card-header">
+              <span className="shop-card-avatar">{baseProfile.avatarEmoji}</span>
+              <div>
+                <strong>{baseProfile.shopName}</strong>
+                <small>{baseProfile.tagline || 'Duka la bidhaa za kila siku'}</small>
+              </div>
+            </div>
+            <div className="shop-card-meta">
+              <span>{baseProfile.town || 'Nairobi'}</span>
+              <span>{baseProfile.phone || '+254700000000'}</span>
+            </div>
+            <button type="button" className="primary-action profile-share-button" onClick={() => void handleShareProfile()}>
+              Shiriki wasifu wa duka
+            </button>
+          </section>
+        </div>
+      </div>
+    )
   }
 
   if (!isHydrated) return null
@@ -372,7 +778,7 @@ function App() {
             <option value="en">{t.english}</option>
             <option value="sw">{t.kiswahili}</option>
           </select>
-          <button type="button" className="avatar-button" aria-label={t.openSettings} onClick={openSettings}>
+          <button type="button" className="avatar-button" aria-label={t.openSettings} onClick={() => setShowProfile(true)}>
             <CircleDollarSign size={18} />
           </button>
         </div>
