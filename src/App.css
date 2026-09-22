@@ -1257,6 +1257,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
@@ -1297,8 +1298,12 @@
   padding: 8px 12px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal;
 }
 
 .stock-list,
@@ -1428,6 +1433,11 @@
 .debt-total {
   color: #64748b;
   font-size: 12px;
+}
+
+.debt-row span {
+  display: block;
+  line-height: 1.45;
 }
 
 .debt-message {
@@ -1737,12 +1747,11 @@ button:active {
   }
 
   .debt-entry {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
 
-  .debt-entry input:first-child,
   .debt-entry button {
-    grid-column: 1 / -1;
+    width: 100%;
   }
 
   .bottom-nav {
@@ -1751,6 +1760,22 @@ button:active {
 }
 
 @media (max-width: 600px) {
+  .panel-header {
+    align-items: stretch;
+  }
+
+  .panel-header > .inline-button {
+    width: 100%;
+  }
+
+  .debt-entry {
+    grid-template-columns: 1fr;
+  }
+
+  .debt-entry button {
+    width: 100%;
+  }
+
   .report-actions {
     align-items: stretch;
     flex-direction: column;
@@ -1779,6 +1804,7 @@ button:active {
 
   .payment-entry button {
     flex: 1 1 100%;
+    white-space: normal;
   }
 }
 
