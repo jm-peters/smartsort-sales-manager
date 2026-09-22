@@ -4,7 +4,7 @@ import {
   ArrowUp,
   Box,
   CalendarDays,
-  CircleDollarSign,
+  UserCircle,
   FileText,
   ShoppingCart,
   WalletCards,
@@ -221,8 +221,8 @@ function App() {
   const ringOffset = ringCircumference - (profileProgress / 100) * ringCircumference
 
   const staffMembers = [
-    { name: session?.name ?? 'Owner', role: session?.role === 'owner' ? 'Mmiliki' : 'Mfanyakazi', emoji: baseProfile.avatarEmoji ?? '🏪', lastActive: 'Aktiviti ya hivi punde' },
-    { name: 'Asha', role: 'Mfanyakazi', emoji: '👩🏽', lastActive: 'Muda 2h uliopita' },
+    { name: session?.name ?? 'Owner', role: session?.role === 'owner' ? 'Owner' : 'Cashier', emoji: baseProfile.avatarEmoji ?? '🏪', lastActive: 'Recently active' },
+    { name: 'Asha', role: 'Cashier', emoji: '👩🏽', lastActive: '2 hours ago' },
   ]
 
   const toggleSection = (section: ProfileSectionKey) => setExpandedSections((current) => ({ ...current, [section]: !current[section] }))
@@ -241,9 +241,9 @@ function App() {
   const handleShareProfile = async () => {
     const profileText = [
       `🏪 ${baseProfile.shopName}`,
-      baseProfile.tagline || 'Kitu kidogo cha duka lako',
-      `📍 ${baseProfile.town || 'Mji'}, ${baseProfile.county || 'County'}`,
-      `📞 ${baseProfile.phone || 'Nambari ya simu'}`,
+      baseProfile.tagline || 'A little something for your shop',
+      `📍 ${baseProfile.town || 'Town'}, ${baseProfile.county || 'County'}`,
+      `📞 ${baseProfile.phone || 'Phone number'}`,
       '',
       'Powered by SmartSort Sales Manager',
     ].join('\n')
@@ -411,7 +411,7 @@ function App() {
             <button type="button" className="profile-back" onClick={() => setShowProfile(false)} aria-label="Back to dashboard">
               ←
             </button>
-            <span className="profile-header-label">Wasifu</span>
+            <span className="profile-header-label">Shop profile</span>
             <button type="button" className="profile-share" onClick={() => void handleShareProfile()} aria-label="Share shop profile">
               <Share2 size={16} />
             </button>
@@ -490,35 +490,33 @@ function App() {
               </div>
             ) : (
               <button type="button" className="profile-tagline-button" onClick={() => setProfileEditing('tagline')}>
-                {baseProfile.tagline ? <span>{baseProfile.tagline}</span> : <span className="muted-ghost">Ongeza maelezo mafupi ya duka lako</span>}
+                {baseProfile.tagline ? <span>{baseProfile.tagline}</span> : <span className="muted-ghost">Add a short shop description</span>}
               </button>
             )}
           </div>
 
           <div className="profile-subhead">
-            <span className="role-badge">{session?.role === 'owner' ? 'Mmiliki' : 'Mfanyakazi'}</span>
-            <span className="member-since">Tangu {memberSince}</span>
+            <span className="role-badge">{session?.role === 'owner' ? 'Owner' : 'Cashier'}</span>
+            <span className="member-since">Since {memberSince}</span>
           </div>
 
           <section className="profile-stat-strip" aria-label="Shop stats">
-            {(session?.role === 'owner' || true) && (
+            <>
               <button type="button" className="profile-stat-card" onClick={() => setActiveTab('reports')}>
-                <span>Leo</span>
+                <span>Today</span>
                 <strong>KES {todaySales.toLocaleString('en-KE')}</strong>
               </button>
-            )}
-            {(session?.role === 'owner' || true) && (
               <button type="button" className="profile-stat-card" onClick={() => setActiveTab('reports')}>
-                <span>Wiki hii</span>
+                <span>This week</span>
                 <strong>KES {weeklySales.toLocaleString('en-KE')}</strong>
               </button>
-            )}
+            </>
             <button type="button" className="profile-stat-card" onClick={() => setActiveTab('deni')}>
-              <span>Wateja</span>
+              <span>Customers</span>
               <strong>{customerCount}</strong>
             </button>
             <button type="button" className="profile-stat-card" onClick={() => setActiveTab('stock')}>
-              <span>Bidhaa</span>
+              <span>Products</span>
               <strong>{productCount}</strong>
             </button>
           </section>
@@ -545,8 +543,8 @@ function App() {
                 <span className="profile-ring-value">{profileProgress}%</span>
               </div>
               <div className="profile-progress-copy">
-                <strong>Wasifu umekamilika kwa {profileProgress}%</strong>
-                <span>Ongeza mahali pa duka lako</span>
+                <strong>Profile is {profileProgress}% complete</strong>
+                <span>Add your shop location</span>
               </div>
             </section>
           )}
@@ -555,7 +553,7 @@ function App() {
             <button type="button" className="profile-section-header" onClick={() => toggleSection('contact')} aria-expanded={expandedSections.contact}>
               <div className="profile-section-title">
                 <span className="section-icon"><Building2 size={16} /></span>
-                <span>Mawasiliano</span>
+                <span>Contact</span>
               </div>
               <span className="status-chip complete">Kamili</span>
               {expandedSections.contact ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -568,7 +566,7 @@ function App() {
                 </button>
                 <button type="button" className="profile-field" onClick={() => { setProfileEditing('tagline'); setEmojiOpen(false) }}>
                   <span className="field-label">Tagline</span>
-                  <strong>{baseProfile.tagline || 'Ongeza maelezo mafupi'}</strong>
+                  <strong>{baseProfile.tagline || 'Add a short description'}</strong>
                 </button>
                 <div className="profile-field fixed-field">
                   <span className="field-label">Namba ya simu</span>
@@ -586,9 +584,9 @@ function App() {
             <button type="button" className="profile-section-header" onClick={() => toggleSection('location')} aria-expanded={expandedSections.location}>
               <div className="profile-section-title">
                 <span className="section-icon"><MapPin size={16} /></span>
-                <span>Mahali</span>
+                <span>Location</span>
               </div>
-              <span className="status-chip incomplete">Haijakamilika</span>
+              <span className="status-chip incomplete">Incomplete</span>
               {expandedSections.location ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </button>
             {expandedSections.location && (
@@ -597,7 +595,7 @@ function App() {
                   <div className="map-thumb" aria-hidden="true">
                     <div className="map-pin">📍</div>
                   </div>
-                  <button type="button" className="secondary-button">Sasisha mahali</button>
+                  <button type="button" className="secondary-button">Update location</button>
                 </div>
                 <div className="profile-field fixed-field">
                   <span className="field-label">County</span>
@@ -619,7 +617,7 @@ function App() {
             <button type="button" className="profile-section-header" onClick={() => toggleSection('staff')} aria-expanded={expandedSections.staff}>
               <div className="profile-section-title">
                 <span className="section-icon"><Users size={16} /></span>
-                <span>Wafanyakazi</span>
+                <span>Staff</span>
               </div>
               <span className="status-chip complete">Kamili</span>
               {expandedSections.staff ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -636,7 +634,7 @@ function App() {
                     <small>{member.lastActive}</small>
                   </div>
                 ))}
-                <button type="button" className="secondary-button wide-button">Ongeza mfanyakazi</button>
+                <button type="button" className="secondary-button wide-button">Add staff member</button>
               </div>
             )}
           </section>
@@ -645,7 +643,7 @@ function App() {
             <button type="button" className="profile-section-header" onClick={() => toggleSection('plan')} aria-expanded={expandedSections.plan}>
               <div className="profile-section-title">
                 <span className="section-icon"><Sparkles size={16} /></span>
-                <span>Mpango wa Malipo</span>
+                <span>Payment plan</span>
               </div>
               <span className="status-chip complete">Active</span>
               {expandedSections.plan ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -676,7 +674,7 @@ function App() {
               <span className="shop-card-avatar">{baseProfile.avatarEmoji}</span>
               <div>
                 <strong>{baseProfile.shopName}</strong>
-                <small>{baseProfile.tagline || 'Duka la bidhaa za kila siku'}</small>
+                <small>{baseProfile.tagline || 'Your everyday shop'}</small>
               </div>
             </div>
             <div className="shop-card-meta">
@@ -684,7 +682,7 @@ function App() {
               <span>{baseProfile.phone || '+254700000000'}</span>
             </div>
             <button type="button" className="primary-action profile-share-button" onClick={() => void handleShareProfile()}>
-              Shiriki wasifu wa duka
+              Share shop profile
             </button>
           </section>
         </div>
@@ -699,12 +697,12 @@ function App() {
       <div className="app-shell onboarding-shell">
         <main className="onboarding-card">
           <p className="eyebrow">SmartSort Sales Manager</p>
-          <h1>Fungua simu</h1>
-          <p className="onboarding-copy">Tumia PIN ya kifaa kuona data yako bila intaneti.</p>
+          <h1>Unlock device</h1>
+          <p className="onboarding-copy">Use the device PIN to view your data offline.</p>
           <div className="onboarding-form">
             <input aria-label="Device PIN" placeholder="PIN ya kifaa" inputMode="numeric" type="password" maxLength={6} value={devicePin} onChange={(event) => setDevicePinValue(event.target.value.replace(/\D/g, ''))} />
             {authError && <div className="auth-message" role="alert">{authError}</div>}
-            <button type="button" className="primary-action" disabled={devicePin.length < 4} onClick={handleDevicePin}>Fungua</button>
+            <button type="button" className="primary-action" disabled={devicePin.length < 4} onClick={handleDevicePin}>Unlock</button>
           </div>
         </main>
       </div>
@@ -716,11 +714,11 @@ function App() {
       <div className="app-shell onboarding-shell">
         <main className="onboarding-card">
           <p className="eyebrow">SmartSort Sales Manager</p>
-          <h1>Weka PIN ya kifaa</h1>
+          <h1>Set device PIN</h1>
           <p className="onboarding-copy">PIN hii inabaki kwenye simu hii pekee. Haitumiki kama password ya akaunti.</p>
           <div className="onboarding-form">
             <input aria-label="Device PIN" placeholder="PIN ya tarakimu 4 hadi 6" inputMode="numeric" type="password" maxLength={6} value={devicePin} onChange={(event) => setDevicePinValue(event.target.value.replace(/\D/g, ''))} />
-            <button type="button" className="primary-action" disabled={devicePin.length < 4} onClick={handleSetDevicePin}>Hifadhi PIN</button>
+            <button type="button" className="primary-action" disabled={devicePin.length < 4} onClick={handleSetDevicePin}>Save PIN</button>
           </div>
         </main>
       </div>
@@ -743,7 +741,7 @@ function App() {
             {authMode !== 'reset' && <input aria-label={authMode === 'signin' ? 'Username or email' : 'Email address'} placeholder={authMode === 'signin' ? 'Username or email' : 'Email address'} type={authMode === 'signin' ? 'text' : 'email'} autoComplete={authMode === 'signin' ? 'username' : 'email'} value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} />}
             {authMode !== 'reset' && <input aria-label="Password" placeholder="Password (8+ characters)" type="password" autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} />}
             {(authMode === 'signup' || authMode === 'reset') && <input aria-label="Confirm password" placeholder="Confirm password" type="password" autoComplete="new-password" value={authConfirmPassword} onChange={(event) => setAuthConfirmPassword(event.target.value)} />}
-            {authMode !== 'cashier-signup' && typeof navigator !== 'undefined' && !navigator.onLine && <div className="auth-message">{authMode === 'signup' ? 'Signup inahitaji intaneti.' : 'Unahitaji intaneti kwa mara ya kwanza kwenye simu hii.'}</div>}
+            {authMode !== 'cashier-signup' && typeof navigator !== 'undefined' && !navigator.onLine && <div className="auth-message">{authMode === 'signup' ? 'Sign up requires an internet connection.' : 'An internet connection is required for the first sign-in on this device.'}</div>}
             {authError && <div className="auth-message" role="alert">{authError}</div>}
             <button type="button" className="primary-action" disabled={authBusy || (authMode !== 'reset' && typeof navigator !== 'undefined' && !navigator.onLine)} onClick={authMode === 'signup' ? handleOnboarding : authMode === 'cashier-signup' ? handleCashierSignup : authMode === 'reset' ? handlePasswordUpdate : handleSignIn}>{authBusy ? 'Please wait...' : authMode === 'signup' ? 'Create owner account' : authMode === 'cashier-signup' ? 'Create cashier account' : authMode === 'reset' ? 'Update password' : 'Sign in'}</button>
             {authMode === 'signin' && <button type="button" className="auth-switch" onClick={handlePasswordResetRequest}>Forgot password?</button>}
@@ -776,10 +774,9 @@ function App() {
             className="locale-select"
           >
             <option value="en">{t.english}</option>
-            <option value="sw">{t.kiswahili}</option>
           </select>
           <button type="button" className="avatar-button" aria-label={t.openSettings} onClick={() => setShowProfile(true)}>
-            <CircleDollarSign size={18} />
+            <UserCircle size={18} />
           </button>
         </div>
       </header>
@@ -915,9 +912,9 @@ function App() {
                 <span>{t.totalSales}</span>
                 <strong>KES {cartTotal.toLocaleString('en-KE')}</strong>
               </article>
-              <article className="stat-card profit">
-                <span>{t.profit}</span>
-                <strong>KES {(cartTotal * 0.23).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</strong>
+              <article className="stat-card expense-report">
+                <span>{t.expenses}</span>
+                <strong>KES {reportSummary.expenses.toLocaleString('en-KE')}</strong>
               </article>
             </section>
 
@@ -1162,16 +1159,12 @@ function App() {
               <span>{t.totalSales}</span>
               <strong>KES {reportSummary.sales.toLocaleString('en-KE')}</strong>
             </article>
-            <article className="report-card alt">
-              <span>{t.profit}</span>
-              <strong>KES {reportSummary.profit.toLocaleString('en-KE')}</strong>
-            </article>
             <article className="report-card expense-report">
               <span>{t.expenses}</span>
               <strong>KES {reportSummary.expenses.toLocaleString('en-KE')}</strong>
             </article>
           </div>
-          <div className="report-detail">{reportSummary.transactions} {t.transactionsToday} · Net KES {reportSummary.net.toLocaleString('en-KE')}</div>
+          <div className="report-detail">{reportSummary.transactions} {t.transactionsToday}</div>
         </main>
       )}
 

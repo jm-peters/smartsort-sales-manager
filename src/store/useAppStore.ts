@@ -19,20 +19,12 @@ async function reportForDate(date: string): Promise<ReportSummary> {
   ])
   const salesSummary = sales.reduce<ReportSummary>((summary, sale) => ({
     sales: summary.sales + (sale.status === 'completed' ? sale.total : 0),
-    profit: summary.profit + (sale.status === 'completed' ? sale.total_profit : 0),
     transactions: summary.transactions + (sale.status === 'completed' ? 1 : 0),
     expenses: 0,
-    net: summary.net + (sale.status === 'completed' ? sale.total_profit : 0),
-  }), { sales: 0, profit: 0, transactions: 0, expenses: 0, net: 0 })
+  }), { sales: 0, transactions: 0, expenses: 0 })
   const expenseTotal = expenses.reduce((total, expense) => total + (expense.is_cash_drop ? 0 : expense.amount), 0)
-  return { ...salesSummary, expenses: expenseTotal, net: salesSummary.profit - expenseTotal }
+  return { ...salesSummary, expenses: expenseTotal }
 }
-
-const initialDebts: DebtRecord[] = [
-  { id: 'd1', customer: 'Amina', phone: '+254712000001', amount: 850, paid: 200, items: [], dueDate: '2026-09-25', status: 'partial' },
-  { id: 'd2', customer: 'Kibaki', phone: '+254712000002', amount: 1200, paid: 0, items: [], dueDate: '2026-09-18', status: 'open' },
-  { id: 'd3', customer: 'Salim', phone: '+254712000003', amount: 350, paid: 350, items: [], dueDate: '2026-09-10', status: 'paid' },
-]
 
 const deviceId = 'demo-device'
 const credentialError = 'Jina la mtumiaji/barua pepe au password si sahihi'
@@ -147,7 +139,7 @@ interface AppState {
 export const useAppStore = create<AppState>((set) => ({
   products: [],
   cart: [],
-  debts: initialDebts,
+  debts: [],
   activeTab: 'sell',
   locale: defaultLocale,
   session: null,
@@ -162,7 +154,7 @@ export const useAppStore = create<AppState>((set) => ({
   shopProfile: null,
   lowStockThreshold: 5,
   isHydrated: false,
-  reportSummary: { sales: 0, profit: 0, transactions: 0, expenses: 0, net: 0 },
+  reportSummary: { sales: 0, transactions: 0, expenses: 0 },
   reportDate: today(),
   quickSellProducts: [],
   cashSession: null,
@@ -259,7 +251,6 @@ export const useAppStore = create<AppState>((set) => ({
     const saleId = crypto.randomUUID()
     const saleNo = Number(await localDb.meta.get('next_sale_no').then((entry) => entry?.value ?? 1))
     const total = state.cart.reduce((sum, item) => sum + item.unitPrice * item.qty, 0)
-    const totalProfit = state.cart.reduce((sum, item) => sum + (item.unitPrice - item.unitCost) * item.qty, 0)
     const saleItems = state.cart.map((item) => ({
       id: crypto.randomUUID(),
       sale_id: saleId,
@@ -271,14 +262,14 @@ export const useAppStore = create<AppState>((set) => ({
       unit_cost: item.unitCost,
       cost_unknown: item.costUnknown,
       line_total: item.unitPrice * item.qty,
-      line_profit: (item.unitPrice - item.unitCost) * item.qty,
+      line_profit: 0,
     }))
     const sale = {
       id: saleId,
       shop_id: 'demo-shop',
       sale_no: saleNo,
       total,
-      total_profit: totalProfit,
+      total_profit: 0,
       item_count: state.cart.reduce((sum, item) => sum + item.qty, 0),
       payment_method: 'cash' as const,
       status: 'completed' as const,
@@ -325,10 +316,8 @@ export const useAppStore = create<AppState>((set) => ({
       lastSaleReceipt: buildReceiptText(current.shopProfile?.shopName ?? 'SmartSort Sales Manager', saleNo, current.cart, total, 'cash'),
       reportSummary: {
         sales: current.reportSummary.sales + total,
-        profit: current.reportSummary.profit + totalProfit,
         transactions: current.reportSummary.transactions + 1,
         expenses: current.reportSummary.expenses,
-        net: current.reportSummary.net + totalProfit,
       },
       expectedCash: current.expectedCash + total,
     }))
@@ -439,7 +428,6 @@ export const useAppStore = create<AppState>((set) => ({
         : {
             ...state.reportSummary,
             expenses: state.reportSummary.expenses + amount,
-            net: state.reportSummary.net - amount,
           },
     }))
   },
@@ -458,7 +446,7 @@ export const useAppStore = create<AppState>((set) => ({
       counted_cash: countedCash,
       cash_variance: countedCash - expectedCash,
       total_sales: state.reportSummary.sales,
-      total_profit: state.reportSummary.profit,
+      total_profit: 0,
       total_expenses: state.reportSummary.expenses,
       transaction_count: state.reportSummary.transactions,
       note: note.trim() || null,
@@ -658,10 +646,10 @@ export const useAppStore = create<AppState>((set) => ({
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return
     set({ reportDate: date, reportSummary: await reportForDate(date) })
   },
-  setLocale: (locale) => set({ locale }),
+  setLocale: () => set({ locale: defaultLocale }),
   signIn: async (identifier, password) => {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      set({ authError: 'Unahitaji intaneti kwa mara ya kwanza kwenye simu hii.' })
+      set({ authError: 'An internet connection is required for the first sign-in on this device.' })
       return false
     }
     set({ authBusy: true, authError: null })
@@ -749,7 +737,7 @@ export const useAppStore = create<AppState>((set) => ({
   },
   completeOnboarding: async (input) => {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      set({ authError: 'Signup inahitaji intaneti.' })
+      set({ authError: 'Sign up requires an internet connection.' })
       return false
     }
     const username = input.username.trim().toLowerCase()
@@ -897,13 +885,11 @@ export const useAppStore = create<AppState>((set) => ({
 
       const salesSummary = todaysSales.reduce<ReportSummary>((summary, sale) => ({
         sales: summary.sales + (sale.status === 'completed' ? sale.total : 0),
-        profit: summary.profit + (sale.status === 'completed' ? sale.total_profit : 0),
         transactions: summary.transactions + (sale.status === 'completed' ? 1 : 0),
         expenses: 0,
-        net: summary.net + (sale.status === 'completed' ? sale.total_profit : 0),
-      }), { sales: 0, profit: 0, transactions: 0, expenses: 0, net: 0 })
+      }), { sales: 0, transactions: 0, expenses: 0 })
       const expenseTotal = todaysExpenses.reduce((total, expense) => total + (expense.is_cash_drop ? 0 : expense.amount), 0)
-      const reportSummary = { ...salesSummary, expenses: expenseTotal, net: salesSummary.profit - expenseTotal }
+      const reportSummary = { ...salesSummary, expenses: expenseTotal }
       const counts = new Map<string, { count: number; last: string }>()
       for (const item of saleItems) {
         const current = counts.get(item.product_id) ?? { count: 0, last: '' }

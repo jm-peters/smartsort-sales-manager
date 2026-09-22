@@ -75,10 +75,8 @@ export type AppSyncStatus = 'online' | 'offline' | 'syncing' | 'error'
 
 export type ReportSummary = {
   sales: number
-  profit: number
   transactions: number
   expenses: number
-  net: number
 }
 
 export type ExpenseCategory = 'rent' | 'transport' | 'stock' | 'airtime' | 'electricity' | 'water' | 'wages' | 'licence' | 'food' | 'cash_drop' | 'other'
